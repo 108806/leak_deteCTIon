@@ -11,6 +11,10 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 """
 
 from pathlib import Path
+import os, time
+from dotenv import load_dotenv
+load_dotenv()
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -25,12 +29,33 @@ SECRET_KEY = 'django-insecure-h%3vpt@om%_05h4yih^ws#*8ktkow3zsr9l(e!u3ri1vh&9$^&
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+if DEBUG:
+    print('\n', os.getcwd(), os.listdir(os.getcwd()), os.environ)
+    print(*[
+    'NAME' + (os.getenv('POSTGRES_DATA') or 'Not Set'),
+    'USER' + (os.getenv('POSTGRES_USER') or 'Not Set'),
+    'PASSWORD' + (os.getenv('POSTGRES_PASS') or 'Not Set'),
+    'HOST' + 'postgres',
+    'PORT' + '5432'])
+time.sleep(3)
+
+
+ALLOWED_HOSTS = ['localhost', 
+    *['192.168.1.' + str(y) for y in range(0x100)],
+    *['192.168.0.' + str(y) for y in range(0x100)],
+    *['192.168.59.' + str(y) for y in range(0x100)],
+    *['172.17.0.' + str(y) for y in range(0x100)],
+    *['172.18.0.' + str(y) for y in range(0x100)],
+    *['172.19.0.' + str(y) for y in range(0x100)],
+    *['172.20.0.' + str(y) for y in range(0x100)],
+]
+
 
 
 # Application definition
 
 INSTALLED_APPS = [
+    'webui',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -75,9 +100,19 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.getenv('POSTGRES_DATA'),
+        'USER': os.getenv('POSTGRES_USER'),
+        'PASSWORD': os.getenv('POSTGRES_PASS'),
+        'HOST': 'postgres',
+        'PORT': '5432',
     }
+}
+
+ELASTICSEARCH_DSL = {
+    'default': {
+        'hosts': 'elastic:9200'  # 'elastic' is the service name from docker-compose
+    },
 }
 
 
@@ -115,7 +150,10 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
-STATIC_URL = 'static/'
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field

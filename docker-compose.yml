@@ -66,6 +66,7 @@ services:
     working_dir: /usr/src/app
     volumes:
       - "./django:/usr/src/app"
+      - "./.env:/usr/src/app/.env"
     ports:
       - "8000:8000"
     networks:
@@ -73,7 +74,7 @@ services:
     depends_on:
       - postgres
     command: >
-      sh -c "pip install -r requirements.txt && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+      sh -c "pip install --upgrade pip; pip install -r requirements.txt && python manage.py makemigrations && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
 
 volumes:
   postgres_data:
