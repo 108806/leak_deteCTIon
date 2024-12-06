@@ -56,6 +56,7 @@ ALLOWED_HOSTS = ['localhost',
 
 INSTALLED_APPS = [
     'webui',
+    'django_q',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -145,6 +146,14 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 
 USE_TZ = True
+
+#MINIO
+DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
+
+AWS_S3_ENDPOINT_URL = "http://minio:9000"  # MinIO service in Docker
+AWS_ACCESS_KEY_ID = "minio_admin1337" 
+AWS_SECRET_ACCESS_KEY = "minio_admin1337_superP@SSW0RD2024"  
+AWS_STORAGE_BUCKET_NAME = "breached-credentials"  
 
 
 # Static files (CSS, JavaScript, Images)
