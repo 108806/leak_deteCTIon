@@ -150,7 +150,7 @@ USE_TZ = True
 #MINIO
 DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
 
-AWS_S3_ENDPOINT_URL = "http://minio:9000"  # MinIO service in Docker
+AWS_S3_ENDPOINT_URL = "minio:9000"  # MinIO service in Docker
 AWS_ACCESS_KEY_ID = f"{os.getenv('MINIO_ACCESS_KEY')}"
 AWS_SECRET_ACCESS_KEY = f"{os.getenv('MINIO_SECRET_KEY')}"
 AWS_STORAGE_BUCKET_NAME = "breached-credentials"  
@@ -171,11 +171,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 Q_CLUSTER = {
     'name': 'Django-Q',
-    'orm': 'default',  # Use the default Django database (PostgreSQL)
-    'retry': 60,  # Retry failed tasks after 60 seconds
-    'timeout': 300,  # Task timeout in seconds
-    'save_limit': 100,  # Save the last 100 tasks in the broker
-    'workers': 2,  # Number of worker processes
-    'queue_limit': 50,  # Maximum number of tasks in the queue
-    'bulk': 10,  # Number of tasks fetched per worker
+    'orm': 'default',  # Use the default database as the task broker
+    'retry': 360,      # Retry failed tasks after 360 seconds
+    'timeout': 300,    # Task timeout in seconds
+    'workers': 4,      # Number of worker processes
+    'queue_limit': 50, # Maximum number of tasks in the queue
+    'bulk': 10,        # Number of tasks fetched per worker
 }

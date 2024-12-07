@@ -76,6 +76,20 @@ services:
     command: >
       sh -c "pip install --upgrade pip; pip install -r requirements.txt && python manage.py makemigrations && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
 
+  qcluster:
+    image: python:3.10
+    container_name: qcluster
+    working_dir: /usr/src/app
+    volumes:
+      - "./django:/usr/src/app"
+      - "./.env:/usr/src/app/.env"
+    networks:
+      - cti_net
+    depends_on:
+      - postgres
+    command: >
+      sh -c "pip install --upgrade pip; pip install -r requirements.txt && python manage.py qcluster"
+
 volumes:
   postgres_data:
   es_data:

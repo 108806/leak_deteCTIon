@@ -1,10 +1,5 @@
-from django_q.tasks import schedule
-from datetime import timedelta
+from django_q.tasks import async_task
 from .processor import process_scrap_files
 # Schedule the task
-schedule(
-    "webui.tasks.process_scrap_files",
-    name="Process Scrap Files",
-    schedule_type="H",  # Hourly schedule
-    next_run=timedelta(hours=1),  # Run every hour
-)
+def schedule_scrap_processing():
+    async_task(process_scrap_files)

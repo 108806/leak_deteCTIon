@@ -1,7 +1,7 @@
 from minio import Minio
 from django.db import IntegrityError, transaction
 from webui.models import ScrapFile, BreachedCredential
-from core.settings import AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_ENDPOINT_URL
+from core.settings import AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_S3_ENDPOINT_URL, AWS_STORAGE_BUCKET_NAME
 import hashlib
 import os
 import re
@@ -15,7 +15,8 @@ client = Minio(
 )
 
 def process_scrap_files():
-    bucket_name = "scraps"
+    print('[*] Running process_scrap_files...')
+    bucket_name = AWS_STORAGE_BUCKET_NAME
     objects = client.list_objects(bucket_name, recursive=True)
 
     for obj in objects:
