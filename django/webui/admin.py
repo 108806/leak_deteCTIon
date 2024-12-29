@@ -5,9 +5,9 @@ from .models import BreachedCredential, ScrapFile
 
 @admin.register(BreachedCredential)
 class BreachedCredentialAdmin(admin.ModelAdmin):
-    list_display = ('username', 'source', 'hash', 'hash_type', 'added_at')
-    search_fields = ('username', 'source', 'password')
-    list_filter = ('source', 'added_at', 'file', 'hash_type')
+    list_display = ('username', 'source', 'website', 'hash_type', 'added_at')
+    search_fields = ('username', 'source', 'password', 'website')
+    list_filter = ('source', 'added_at', 'file', 'hash_type', 'website')
     
 @admin.register(ScrapFile)    
 class ScrapFile(admin.ModelAdmin):

@@ -33,6 +33,7 @@ class BreachedCredential(models.Model):
     hash = models.CharField(max_length=256, editable=False, null=True) 
     hash_type = models.CharField(max_length=32, default="sha256")
     added_at = models.DateTimeField(auto_now_add=True)
+    website = models.URLField(max_length=256, blank=True, null=True)
 
     def save(self, *args, **kwargs):
         # Automatically calculate the SHA-256 hash of the password

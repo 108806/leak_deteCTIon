@@ -172,8 +172,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 Q_CLUSTER = {
     'name': 'Django-Q',
     'orm': 'default',  # Use the default database as the task broker
-    'retry': 360,      # Retry failed tasks after 360 seconds
-    'timeout': 300,    # Task timeout in seconds
+    'retry': 3601,      # Retry failed tasks after 360 seconds
+    'timeout': 3600,    # Task timeout in seconds
     'workers': 4,      # Number of worker processes
     'queue_limit': 50, # Maximum number of tasks in the queue
     'bulk': 10,        # Number of tasks fetched per worker
