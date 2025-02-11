@@ -67,6 +67,7 @@ services:
     volumes:
       - "./django:/usr/src/app"
       - "./.env:/usr/src/app/.env"
+      - "./TG_DL/app/channels:/usr/share/Telegram-Files/"
     ports:
       - "8000:8000"
     networks:
@@ -74,7 +75,7 @@ services:
     depends_on:
       - postgres
     command: >
-      sh -c "pip install --upgrade pip; pip install -r requirements.txt && python manage.py makemigrations && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
+      sh -c "pip install --upgrade pip; pip install -r requirements.txt && python manage.py collect_scrap ; python manage.py process_scrap && python manage.py makemigrations --noinput && python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000"
 
   qcluster:
     image: python:3.10
@@ -89,6 +90,23 @@ services:
       - postgres
     command: >
       sh -c "pip install --upgrade pip; pip install -r requirements.txt && python manage.py qcluster"
+
+  telegram-downloader:
+    image: python:3.10
+    container_name: telegram-downloader
+    working_dir: /usr/src/app/
+    stdin_open: true  # Keep stdin open for NOT WORKING interactive input
+    tty: true         # Allocate a pseudo-TTY
+    volumes:
+      - "./TG_DL/app/:/usr/src/app/"
+    ports:
+      - "8001:8000"
+    networks:
+      - cti_net
+    command:
+      - sh
+      - -c
+      - "pwd && ls -la; pip install --upgrade pip; pip install -r requirements.txt && python main.py"
 
 volumes:
   postgres_data:

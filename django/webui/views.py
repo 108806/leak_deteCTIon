@@ -12,14 +12,14 @@ class BreachedCredentialListView(ListView):
 # Create View
 class BreachedCredentialCreateView(CreateView):
     model = BreachedCredential
-    fields = ['username', 'password_hash', 'breach_date', 'source']
+    fields = ['STRING', 'source']
     template_name = 'webui/form.html'
     success_url = reverse_lazy('webui:list')
 
 # Update View
 class BreachedCredentialUpdateView(UpdateView):
     model = BreachedCredential
-    fields = ['username', 'password_hash', 'breach_date', 'source']
+    fields = ['STRING', 'source']
     template_name = 'webui/form.html'
     success_url = reverse_lazy('webui:list')
 

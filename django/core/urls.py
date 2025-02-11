@@ -22,3 +22,4 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('webui/', include('webui.urls')),  # Add app routes if needed
 ]
+

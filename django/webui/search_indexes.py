@@ -8,5 +8,5 @@ class BreachedCredentialDocument(Document):
         name = 'breachedcredentials'  # Index name in Elasticsearch
     class Django:
         model = BreachedCredential
-        fields = ['username', 'password', 'file', 'hash', 'hash_type', 'added_at']
+        fields = ['string', 'file', 'added_at']
 
