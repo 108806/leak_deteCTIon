@@ -88,3 +88,19 @@ coverage.xml
 # Security
 secrets.json
 .env
+
+
+
+*.session
+*.session-journal
+telegram_downloader/app/channels
+telegram_downloader/channels
+telegram_downloader/venv
+qodana.yaml
+*.env
+*.env.bk
+.env
+.env.bk
+/*/.env
+**/.env
+**/.idea/

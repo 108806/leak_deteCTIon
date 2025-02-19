@@ -1,0 +1,17 @@
+cryptg
+pygments
+setuptools
+markdown
+pyaes
+rich
+telethon
+wheel
+rsa
+pytest
+mdurl
+pyasn1
+setuptools
+python-dotenv
+django
+qcluster
+schedule

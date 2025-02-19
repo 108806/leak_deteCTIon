@@ -155,7 +155,7 @@ def line_splitter(lines:str) -> dict:
     Multiple lines in one string handler.
     '''
     print(f'Splitting {len(lines)} long line. Assumming nested...')
-    map = dict()
+    map = []
     site_regex = r'((?:[-a-zA-Z0-9@:%_\+.~#?&//=]+(?:\.[-a-zA-Z0-9@%_\+~#?&]+){2,63}))'
 
     # S E P A R A T O R S:
@@ -167,11 +167,11 @@ def line_splitter(lines:str) -> dict:
         for line in lines:
             line = line.replace('https://', '')
             line = line.replace('http://', '')
-            map.add(line)
+            map.append(line)
     else:
         lines = lines.split(TYPE_2)
         for line in lines:
             line = line.replace('https://', '')
             line = line.replace('http://', '')
-            map.add(line)
+            map.append(line)
     return map
