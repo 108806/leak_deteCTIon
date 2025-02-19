@@ -67,7 +67,7 @@ services:
     volumes:
       - "./django:/usr/src/app"
       - "./.env:/usr/src/app/.env"
-      - "./TG_DL/app/channels:/usr/share/Telegram-Files/"
+      - "./telegram_downloader/app/channels:/usr/share/Telegram-Files/"
     ports:
       - "8000:8000"
     networks:
@@ -98,7 +98,7 @@ services:
     stdin_open: true  # Keep stdin open for NOT WORKING interactive input
     tty: true         # Allocate a pseudo-TTY
     volumes:
-      - "./TG_DL/app/:/usr/src/app/"
+      - "./telegram_downloader/app/:/usr/src/app/"
     ports:
       - "8001:8000"
     networks:
