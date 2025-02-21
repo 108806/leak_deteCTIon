@@ -1,0 +1,106 @@
+# Python-related ignores
+*.pyc
+*.pyo
+*.pyd
+**/*.pyc
+**/*.pyo
+**/*.pyd
+__pycache__/
+**/__pycache__
+**.env
+**/.env
+**/.sqlite3
+**./sqlite3
+
+# Django-specific ignores
+db.sqlite3
+django/staticfiles
+django/static
+django/media
+django/log
+django/debug
+/media/
+staticfiles/
+static/
+*.log
+*.out
+*.err
+debug/
+logs/
+*.pot
+*.mo
+
+# Migrations (optional, if you generate migrations externally)
+*/migrations/*
+
+# Docker-related ignores
+*.pid
+docker-compose.override.yml
+docker-compose.*.yml~backup
+/.dockerignore
+**/.env
+data/postgres_data/
+data/es_data/
+data/minio_data/
+*.tar
+*.bak
+
+# Node.js / Web UI-related (if applicable)
+/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+/build/
+dist/
+.DS_Store
+
+# IDEs and editors
+.idea/
+.vscode/
+*.sublime-workspace
+*.sublime-project
+
+# System files
+*.swp
+*.tmp
+*.DS_Store
+Thumbs.db
+
+# Virtual environments
+venv/
+.env/
+.env.*.backup
+Pipfile
+Pipfile.lock
+pyvenv.cfg
+
+# Backup files
+*.bak
+*.old
+*.orig
+
+# Testing
+.coverage
+.tox/
+htmlcov/
+coverage.xml
+
+# Security
+secrets.json
+.env
+
+
+
+*.session
+*.session-journal
+telegram_downloader/app/channels
+telegram_downloader/channels
+telegram_downloader/venv
+qodana.yaml
+*.env
+*.env.bk
+.env
+.env.bk
+/*/.env
+**/.env
+**/.idea/

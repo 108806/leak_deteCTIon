@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  telegram_downloader:
+    image: python:3.10
+    container_name: telegram_downloader
+    working_dir: /usr/src/app/
+    stdin_open: true  # Keep stdin open for interactive input
+    tty: true         # Allocate a pseudo-TTY
+    volumes:
+      - "./app/channels:/usr/src/app/channels"
+      - "./app/:/usr/src/app/"
+    ports:
+      - "8001:8000"
+    networks:
+      - cti_net
+    command:
+      - sh
+      - -c
+      - "pwd && ls -la; pip install --upgrade pip; pip install -r requirements.txt && python main.py"
+
+volumes:
+  data:
+  app:
+
+networks:
+  cti_net:
