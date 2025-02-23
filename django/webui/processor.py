@@ -137,8 +137,8 @@ def tld_extract(line):
                 with open('tlds.txt', 'w+', encoding='utf-8') as f:
                     if len(tlds) > len(f.readlines()):
                         f.writelines(tlds)
-        except Exception as E:
-            print('TLD from url failed :', E)
+        except Exception as e:
+            print('TLD from url failed :', e)
             traceback.print_exc()
     
     invalids = '@ # ! $ % & * + = ^ ~ < >'.split()
@@ -156,7 +156,7 @@ def line_splitter(lines:str) -> dict:
     '''
     print(f'Splitting {len(lines)} long line. Assumming nested...')
     map = []
-    site_regex = r'((?:[-a-zA-Z0-9@:%_\+.~#?&//=]+(?:\.[-a-zA-Z0-9@%_\+~#?&]+){2,63}))'
+    #site_regex = r'((?:[-a-zA-Z0-9@:%_\+.~#?&//=]+(?:\.[-a-zA-Z0-9@%_\+~#?&]+){2,63}))'
 
     # S E P A R A T O R S:
     TYPE_1 = "/:" #DOMAIN:/USERNAME:PASSWORD
