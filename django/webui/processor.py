@@ -46,8 +46,8 @@ def process_scrap_files(force_reprocess=False):
             print(f"Error calculating hash for file {obj.object_name}: {e}")
             try:
                 os.remove(local_file)
-            except Exception as e:
-                print(e)
+            except Exception as e2:
+                print(e2)
                 traceback.print_exc()
 
             continue
@@ -65,7 +65,7 @@ def process_scrap_files(force_reprocess=False):
                 continue
 
         try: 
-            with open(local_file, "r") as file:
+            with open(local_file, "r", encoding='utf-8') as file:
                 for line in file:
                     
                     #print('\n[*] LINE:',IDX, line, 'FILE:', local_file)
@@ -75,7 +75,7 @@ def process_scrap_files(force_reprocess=False):
                         nested_lines = line_splitter(line)
                         for nested_line in nested_lines:
                             LINES_TOTAL += 1
-                            if nested_line > 512:
+                            if len(nested_line) > 512:
                                 print('\n[*]line_splitter failed, line still > 512.')
                             try:
                                 BreachedCredential.objects.create(
@@ -124,17 +124,17 @@ def tld_extract(line):
     line = line.split('://')[-1] #Cut http(s):// or leave as it is
     try:
         tlds = open('tlds.txt', 'r').read().split('\n')
-    except Exception as E:
-        print('TLD from .txt file failed, trying to obtain from url...', )
+    except Exception as e:
+        print('TLD from .txt file failed, trying to obtain from url...', e)
         traceback.print_exc()
     if not tlds:
         try:
             url = 'https://data.iana.org/TLD/tlds-alpha-by-domain.txt'
-            response = requests.get(url)
+            response = requests.get(url, timeout=60)
             tlds = response.text.splitlines()
             print('Valid TLDS from url obtained:', len(tlds))
             if not os.path.isfile('tlds.txt'):
-                with open('tlds.txt', 'w+') as f:
+                with open('tlds.txt', 'w+', encoding='utf-8') as f:
                     if len(tlds) > len(f.readlines()):
                         f.writelines(tlds)
         except Exception as E:

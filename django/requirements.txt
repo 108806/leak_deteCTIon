@@ -37,3 +37,8 @@ django-storages[boto3]==1.14.1  # For storage backend integration
 minio==7.2.12                # For working with MinIO in Python
 
 requests
+black 
+flake8 
+isort 
+autoflake 
+pylint

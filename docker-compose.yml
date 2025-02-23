@@ -77,7 +77,13 @@ services:
     depends_on:
       - postgres
     command: >
-      sh -c "pip install --upgrade pip; pip install -r requirements.txt && python manage.py collect_scrap ; python manage.py process_scrap && python manage.py makemigrations --noinput && python manage.py migrate --noinput && python manage.py runserver 0.0.0.0:8000"
+      sh -c "pip install --upgrade pip && 
+             pip install -r requirements.txt && 
+             python manage.py makemigrations --noinput && 
+             python manage.py migrate --noinput && 
+             python manage.py collect_scrap && 
+             python manage.py process_scrap && 
+             python manage.py runserver 0.0.0.0:8000"
 
   qcluster:
     image: python:3.10
@@ -90,6 +96,7 @@ services:
       - cti_net
     depends_on:
       - postgres
+      - django
     command: >
       sh -c "pip install --upgrade pip; pip install -r requirements.txt && python manage.py qcluster"
 
@@ -101,8 +108,8 @@ services:
     tty: true         # Allocate a pseudo-TTY
     volumes:
       - "./telegram_downloader/app/:/usr/src/app/"
-    ports:
-      - "8001:8000"
+    # ports:
+    #   - "8001:8000"
     networks:
       - cti_net
     command:

@@ -29,7 +29,7 @@ def collect_and_upload_files(source_path=TARGET_PATH, bucket_name:str=AWS_STORAG
         for root, _, files in os.walk(source_path):
             for file in files:
                 print ('[*] Processing file: ', file)
-                if any(file.endswith(x) for x in ACCEPTED_FILETYPES):
+                if any(file.endswith(x) for x in ACCEPTED_FILETYPES): #TODO: unzip the compressed files on the fly.
                     file_path = os.path.join(root, file)
                     object_name = os.path.relpath(file_path, source_path).replace(os.sep, '/')
                     
