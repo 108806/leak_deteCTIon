@@ -1,6 +1,7 @@
 from django_q.tasks import schedule
 from datetime import timedelta
 
+
 def setup_scrap_schedule():
     # Schedule the process_scrap_files function to run every 3 minutes
     schedule(

@@ -20,23 +20,24 @@ tracemalloc.start()
 
 #######################
 load_dotenv()
-api_id = int(os.getenv('id').strip())
-api_hash = os.getenv('hash')
-if not os.getenv('phone') and not os.getenv('channels'):
-    print('[*] Error .env file not configured.')
+api_id = int(os.getenv("id").strip())
+api_hash = os.getenv("hash")
+if not os.getenv("phone") and not os.getenv("channels"):
+    print("[*] Error .env file not configured.")
     sys.exit()
-phone = os.getenv('phone')
-channels = os.getenv('channels')
-if ',' in channels:
-    channels = channels.split(',')
-else: #Should work with single channel too.
+phone = os.getenv("phone")
+channels = os.getenv("channels")
+if "," in channels:
+    channels = channels.split(",")
+else:  # Should work with single channel too.
     channels = (channels,)
-watch = os.getenv('watch')
+watch = os.getenv("watch")
 print(f"API ID: {api_id}")
 print(f"API Hash: {api_hash}")
 print(f"Phone: {phone}")
 #######################
-pprint("[*]", os.getcwd(), 'channels:', channels, __name__)
+pprint("[*]", os.getcwd(), "channels:", channels, __name__)
+
 
 class DateTimeEncoder(json.JSONEncoder):
     def default(self, o):
@@ -45,6 +46,7 @@ class DateTimeEncoder(json.JSONEncoder):
         if isinstance(o, bytes):
             return list(o)
         return json.JSONEncoder.default(self, o)
+
 
 NO_CHANNEL = 0  # WILL PROMPT FOR TARGET IF 0.
 ######  A V A I L A B L E   M O D E S  ######
@@ -57,60 +59,77 @@ ORIGINAL_FILENAMES = 2
 ORIGINAL_FILENAMES_AND_SHA256 = 3
 
 _statix = {  # IT WILL USE VALUES FROM THE OVERRIDES OR GO BACK TO DEFAULT ONES.
-    "id":           api_id,  # API ID for user account
-    "hash":         api_hash,  # API Hash for user account
-    "phone":        phone,  # Your phone number
-    "chan":         NO_CHANNEL,  # Channel to interact with:
+    "id": api_id,  # API ID for user account
+    "hash": api_hash,  # API Hash for user account
+    "phone": phone,  # Your phone number
+    "chan": NO_CHANNEL,  # Channel to interact with:
     # String: Assumes a username, phone number, or invite link.
     # Integer: Assumes a user ID, group ID, or channel ID, THAT IS NOT WORKING NOW.
-    "mode":         DOWNLOAD_ALL_FILES,
-    "naming":       ORIGINAL_FILENAMES_AND_SHA256
+    "mode": DOWNLOAD_ALL_FILES,
+    "naming": ORIGINAL_FILENAMES_AND_SHA256,
 }
 MAX_TASKS = 3
 semaphore = asyncio.Semaphore(MAX_TASKS)
 
-async def telegram_dldr(channel_override: str = _statix['chan'], phone_override: str = _statix['phone'],
-                        hash_override: str = _statix['hash'], mode_override: int = _statix['mode'],
-                        naming_override: int = _statix['naming']):
+
+async def telegram_dldr(
+    channel_override: str = _statix["chan"],
+    phone_override: str = _statix["phone"],
+    hash_override: str = _statix["hash"],
+    mode_override: int = _statix["mode"],
+    naming_override: int = _statix["naming"],
+):
     async with semaphore:
         start = time.time()
 
-        if not channel_override and not _statix['chan']:
-            print('[*] WARNING : INTERACTIVE MODE IS BEING USED!')
-            ctx = input('Provide the target channel:')
-            _statix['chan'] = ctx if not ctx.isnumeric() else int(ctx)
+        if not channel_override and not _statix["chan"]:
+            print("[*] WARNING : INTERACTIVE MODE IS BEING USED!")
+            ctx = input("Provide the target channel:")
+            _statix["chan"] = ctx if not ctx.isnumeric() else int(ctx)
 
         allowed_modes, allowed_naming = (1, 2, 3), (1, 2, 3)
 
-        if not mode_override and not _statix['mode']:
-            print('[*] WARNING : INTERACTIVE MODE IS BEING USED!')
-            mode = int(input('''Please select the mode:
+        if not mode_override and not _statix["mode"]:
+            print("[*] WARNING : INTERACTIVE MODE IS BEING USED!")
+            mode = int(
+                input(
+                    """Please select the mode:
             1. Download all files.
             2. Extract all links.
             3. Download all files from the links
-            '''))
+            """
+                )
+            )
             if mode in allowed_modes:
-                _statix['mode'] = mode
+                _statix["mode"] = mode
             else:
-                raise ValueError(f'[*] ERROR: Mode not in allowed modes - {allowed_modes}')
+                raise ValueError(
+                    f"[*] ERROR: Mode not in allowed modes - {allowed_modes}"
+                )
 
-        if not naming_override and not _statix['naming']:
-            print('[*] WARNING : INTERACTIVE MODE IS BEING USED!')
-            naming = int(input('''Please select the FILE naming convention:
+        if not naming_override and not _statix["naming"]:
+            print("[*] WARNING : INTERACTIVE MODE IS BEING USED!")
+            naming = int(
+                input(
+                    """Please select the FILE naming convention:
         1.sha256 + extension.
         2.original filenames.
         3.original filenames + sha256 + extension.
-        '''))
+        """
+                )
+            )
             if naming in allowed_naming:
-                _statix['naming'] = naming
+                _statix["naming"] = naming
             else:
-                raise ValueError(f'[*] ERROR: Naming convention not in allowed modes - {allowed_modes}')
+                raise ValueError(
+                    f"[*] ERROR: Naming convention not in allowed modes - {allowed_modes}"
+                )
 
         # Initialize the Telegram Client for user account
         async with TelegramClient(
-                session=f"./session.{api_id}.session", # Needs to match the API ID
-                api_id=_statix["id"],
-                api_hash=_statix["hash"]
+            session=f"./session.{api_id}.session",  # Needs to match the API ID
+            api_id=_statix["id"],
+            api_hash=_statix["hash"],
         ) as client:
             me = await client.get_me()
             pprint(me)
@@ -145,6 +164,7 @@ async def telegram_dldr(channel_override: str = _statix['chan'], phone_override:
         dif = end - start
         print(f"Time: {dif:.2f} seconds")
 
+
 async def main():
     while True:
         for channel in channels:
@@ -152,8 +172,9 @@ async def main():
                 await telegram_dldr(channel_override=channel)
                 print(f"Jobs completed at {datetime.now().strftime('%H:%M:%S')}")
             except Exception as e:
-                print('Job failed.', e)
+                print("Job failed.", e)
             await asyncio.sleep(60)  # Changed to await to ensure asynchronous wait
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     asyncio.run(main())
