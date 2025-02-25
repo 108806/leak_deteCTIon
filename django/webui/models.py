@@ -1,5 +1,4 @@
 import hashlib
-import os
 from django.db import models, transaction
 from django.conf import settings
 from django.core.validators import MinValueValidator
@@ -8,22 +7,11 @@ from django.dispatch import receiver
 from django.db.models import ProtectedError, QuerySet
 from django.utils.functional import cached_property
 from typing import Optional
+from minio import Minio
+from core.settings import AWS_S3_ENDPOINT_URL, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_STORAGE_BUCKET_NAME
 import logging
 
 logger = logging.getLogger(__name__)
-
-def _calculate_sha256(self) -> str:
-    full_path = os.path.join(settings.BASE_DIR, self.name)
-    try:
-        sha256_hash = hashlib.sha256()
-        with open(full_path, "rb") as file:
-            while chunk := file.read(8192):
-                sha256_hash.update(chunk)
-        return sha256_hash.hexdigest()
-    except FileNotFoundError:
-        logger.error(f"File not found: {full_path}")
-        raise ValueError(f"File not found: {full_path}")
-
 
 class ScrapFile(models.Model):
     """
@@ -33,7 +21,7 @@ class ScrapFile(models.Model):
     BreachedCredential instances. Use with caution in production.
 
     Attributes:
-        name (str): The name of the file (e.g., 'breach_data.txt').
+        name (str): The MinIO object key (path) of the file (e.g., '1501020529/1192_Hungary_Combolistfresh.txt').
         sha256 (str): SHA-256 hash of the file content, unique identifier.
         added_at (datetime): Timestamp of file addition.
         size (Decimal): Size of the file in MB.
@@ -54,6 +42,27 @@ class ScrapFile(models.Model):
         validators=[MinValueValidator(0.0)],
     )
 
+    def _calculate_sha256(self) -> str:
+        """Calculate the SHA-256 hash of the file content by streaming from MinIO."""
+        client = Minio(
+            AWS_S3_ENDPOINT_URL,
+            access_key=AWS_ACCESS_KEY_ID,
+            secret_key=AWS_SECRET_ACCESS_KEY,
+            secure=False,  # Use True if SSL/TLS enabled; adjust based on AWS_S3_ENDPOINT_URL
+        )
+        try:
+            response = client.get_object(AWS_STORAGE_BUCKET_NAME, self.name)
+            sha256_hash = hashlib.sha256()
+            for chunk in response.stream(8192):  # Read in chunks of 8KB
+                sha256_hash.update(chunk)
+            hash_value = sha256_hash.hexdigest()
+            response.close()
+            return hash_value
+        except Exception as e:
+            logger.error(f"Error calculating SHA-256 for {self.name} from MinIO: {e}")
+            raise ValueError(f"Failed to calculate SHA-256 for {self.name}: {e}")
+
+    @transaction.atomic
     def save(self, *args, **kwargs) -> None:
         if not self.sha256:
             self.sha256 = self._calculate_sha256()
@@ -91,9 +100,16 @@ class ScrapFile(models.Model):
 
 @receiver(post_save, sender=ScrapFile)
 def calculate_sha256(sender, instance, created, **kwargs):
-    if created or not instance.sha256:
-        instance.sha256 = instance._calculate_sha256()
-        instance.save(update_fields=["sha256"])
+    if created and not instance.sha256:
+        try:
+            instance.sha256 = instance._calculate_sha256()
+            instance.save(update_fields=["sha256"])
+            logger.info(f"Calculated SHA256 for {instance.name}: {instance.sha256}")
+        except ValueError as e:
+            logger.error(f"Failed to calculate SHA256 for {instance.name}: {e}")
+            # Optionally, set a default or mark as inactive instead of raising
+            instance.sha256 = "hash_calculation_failed"  # Placeholder
+            instance.save(update_fields=["sha256"])
 
 
 class BreachedCredential(models.Model):

@@ -12,7 +12,7 @@ class BreachedCredentialAdmin(admin.ModelAdmin):
 
 
 @admin.register(ScrapFile)
-class ScrapFile(admin.ModelAdmin):
+class ScrapFileAdmin(admin.ModelAdmin):  # Renamed for clarity
     list_display = ("name", "sha256", "added_at", "size", "credential_count")
     search_fields = ("name", "sha256", "size")
     list_filter = ("name", "added_at", "sha256", "size")

@@ -1,193 +1,131 @@
-from minio import Minio
-from django.db import IntegrityError, transaction
+from core.settings import AWS_STORAGE_BUCKET_NAME, AWS_S3_ENDPOINT_URL, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+from django.db import transaction, IntegrityError
+from django.core.exceptions import ValidationError
 from webui.models import ScrapFile, BreachedCredential
-from core.settings import (
-    AWS_ACCESS_KEY_ID,
-    AWS_SECRET_ACCESS_KEY,
-    AWS_S3_ENDPOINT_URL,
-    AWS_STORAGE_BUCKET_NAME,
-)
-from pathlib import Path
+from minio import Minio
+from minio.datatypes import Object
 import hashlib
-import os
-import re
-import requests
-import traceback, logging
+import logging
+import io
 
-logging.basicConfig(level=logging.ERROR)
+logger = logging.getLogger(__name__)
 
-# MinIO Client
-client = Minio(
-    AWS_S3_ENDPOINT_URL,
-    access_key=AWS_ACCESS_KEY_ID,
-    secret_key=AWS_SECRET_ACCESS_KEY,
-    secure=False,
-)
+def calculate_file_size(obj: Object) -> str:
+    """Calculate file size in MB from MinIO object metadata, rounded to 2 decimal places."""
+    size_bytes = obj.size
+    return f"{size_bytes / (1024 ** 2):.2f}"
 
+def line_splitter(line: str, max_length: int = 1024) -> list[str]:
+    """Split a line into chunks if it exceeds max_length, preserving content."""
+    if len(line) <= max_length:
+        return [line]
+    # Simple split by whitespace or characters, adjust for CTI needs (e.g., email:pass)
+    chunks = []
+    while line:
+        chunk = line[:max_length].rsplit(" ", 1)[0]  # Split on last space
+        chunks.append(chunk)
+        line = line[len(chunk):].lstrip()
+    return chunks
 
-def process_scrap_files(force_reprocess=False):
+def process_scrap_files(force_reprocess: bool = False) -> None:
+    """
+    Process scrap files from MinIO by streaming content, create ScrapFile and BreachedCredential instances,
+    with deduplication by SHA-256 hash.
+
+    Args:
+        force_reprocess (bool): If True, reprocess files even if already processed.
+    """
     print("[*] Running process_scrap_files...")
+    client = Minio(
+        AWS_S3_ENDPOINT_URL,
+        access_key=AWS_ACCESS_KEY_ID,
+        secret_key=AWS_SECRET_ACCESS_KEY,
+        secure=False,  # Use True if SSL/TLS enabled; adjust based on AWS_S3_ENDPOINT_URL
+    )
     bucket_name = AWS_STORAGE_BUCKET_NAME
-    objects = client.list_objects(bucket_name, recursive=True)
-    LINES_TOTAL = 0
+    lines_total = 0
 
-    for obj in objects:
-        local_file = f"/tmp/{os.path.basename(obj.object_name)}"
-        try:
-            # Download the file locally
-            client.fget_object(bucket_name, obj.object_name, local_file)
-        except Exception as e:
-            print(f"Error downloading file {obj.object_name}: {e}")
-            continue
+    try:
+        objects = client.list_objects(bucket_name, recursive=True)
+        for obj in objects:
+            object_key = obj.object_name  # This is the path (key) in MinIO, e.g., "1501020529/1192_Hungary_Combolistfresh.txt"
+            logger.info(f"Processing MinIO object: {object_key}")
 
-        # Calculate file hash
-        try:
-            hasher = hashlib.sha256()
-            with open(local_file, "rb") as file:
-                while chunk := file.read(8192):  # Read in chunks of 8KB
-                    hasher.update(chunk)
-                global FILE_SIZE
-                FILE_SIZE = str(file.tell() / 1024**2)[:10]  # Max size up to petabytes
-            file_hash = hasher.hexdigest()
-        except Exception as e:
-            print(f"Error calculating hash for file {obj.object_name}: {e}")
+            # Calculate SHA-256 hash and file size by streaming
             try:
-                os.remove(local_file)
-            except Exception as e2:
-                print(e2)
-                traceback.print_exc()
+                hasher = hashlib.sha256()
+                response = client.get_object(bucket_name, object_key)
+                file_size = calculate_file_size(obj)  # Use object metadata for size
 
-            continue
+                # Stream and hash the object content
+                for chunk in response.stream(8192):  # Read in chunks of 8KB
+                    hasher.update(chunk)
+                file_hash = hasher.hexdigest()
 
-        # Check if the file has already been processed
-        try:
-            with transaction.atomic():
-                scrap_file = ScrapFile.objects.create(
-                    name=obj.object_name, sha256=file_hash, size=FILE_SIZE
-                )
-                del FILE_SIZE
-        except IntegrityError:
-            print(f"File {obj.object_name} already processed...")
-            if not force_reprocess:
-                print("... Not processing again.")
-                os.remove(local_file)
-                continue
+                # Process content into lines for BreachedCredentials
+                content = io.BytesIO()
+                for chunk in response.stream(8192):
+                    content.write(chunk)
+                content.seek(0)  # Reset to start for reading lines
+                lines = (line.decode("utf-8").strip() for line in content if line.strip())
 
-        try:
-            with open(local_file, "r", encoding="utf-8") as file:
-                for line in file:
+                # Check if the file has already been processed (by sha256)
+                try:
+                    with transaction.atomic():
+                        scrap_file, created = ScrapFile.objects.get_or_create(
+                            sha256=file_hash,
+                            defaults={
+                                "name": object_key,  # Store the MinIO object key as the name
+                                "size": file_size,
+                            },
+                        )
+                        if not created and not force_reprocess:
+                            logger.info(f"File {object_key} already processed... Not processing again.")
+                            response.close()
+                            continue
+                        elif not created and force_reprocess:
+                            logger.info(f"Forcing reprocess of {object_key}")
+                            scrap_file.size = file_size  # Update size if reprocessing
+                            scrap_file.save(update_fields=["size"])
 
-                    # print('\n[*] LINE:',IDX, line, 'FILE:', local_file)
-                    if not line:
-                        continue
-                    line = line.strip()
-                    if len(line) > 512:  # Edge Cases with file in file
-                        nested_lines = line_splitter(line)
+                except IntegrityError as e:
+                    logger.error(f"Database integrity error for file {object_key}: {e}")
+                    response.close()
+                    continue
+
+                # Process lines into BreachedCredentials
+                try:
+                    for line in lines:
+                        if not line:
+                            continue
+                        nested_lines = line_splitter(line, max_length=1024)  # Match BreachedCredential max_length
                         for nested_line in nested_lines:
-                            LINES_TOTAL += 1
-                            if len(nested_line) > 1024:
-                                print("\n[*]line_splitter failed, line still > 1024.")
+                            lines_total += 1
                             try:
                                 BreachedCredential.objects.create(
                                     string=nested_line,
                                     file=scrap_file,  # ForeignKey object
                                 )
-                            except Exception as e:
-                                print(
-                                    f"Error saving line from file {obj.object_name}: {nested_line}, Error: {e}"
-                                )
+                                logger.debug(f"Created BreachedCredential for line: {nested_line}")
+                            except (ValidationError, Exception) as e:
+                                logger.error(f"Error saving line from {object_key}: {nested_line}, Error: {e}")
                                 traceback.print_exc()
-                    LINES_TOTAL += 1
-                    try:
-                        BreachedCredential.objects.create(
-                            string=line,
-                            file=scrap_file,  # ForeignKey object
-                        )
-                    except Exception as e:
-                        print(
-                            f"Error saving line from file {obj.object_name}: {line}, Error: {e}"
-                        )
-                        traceback.print_exc()
-        except Exception as e:
-            print(f"Error processing file {obj.object_name}: {e}")
-            traceback.print_exc()
-        # Clean up the local file
-        os.remove(local_file)
-        print(f"Processed file: {obj.object_name}")
-    print("Total Lines read : ", LINES_TOTAL)
+                except Exception as e:
+                    logger.error(f"Error processing lines for {object_key}: {e}")
+                    traceback.print_exc()
 
+                response.close()  # Ensure the response is closed
+                logger.info(f"Processed object: {object_key}")
 
-def extract_website(line):
-    """
-    Extracts a website URL from the given line using regex.
-    Returns the website if found; otherwise, None.
-    NOT USED CURRENTLY.
-    """
-    # Match HTTP or HTTPS URLs
-    match = re.search(r"(https?://[^\s]+)", line)
-    return match.group(1) if match else None
+            except Exception as e:
+                logger.error(f"Critical error processing object {object_key}: {e}")
+                traceback.print_exc()
+                if 'response' in locals():
+                    response.close()
+                continue
 
-
-def tld_extract(line):
-    """
-    Shorten long links to just TLD. Returns a string.
-    NOT USED CURRENTLY.
-    """
-    url, response, tlds = "", "", ""
-    if not line:
-        return ""
-    line = line.split("://")[-1]  # Cut http(s):// or leave as it is
-    try:
-        tlds = open("tlds.txt", "r").read().split("\n")
+        print(f"Total lines read: {lines_total}")
     except Exception as e:
-        print("TLD from .txt file failed, trying to obtain from url...", e)
+        logger.error(f"Critical error in process_scrap_files: {e}")
         traceback.print_exc()
-    if not tlds:
-        try:
-            url = "https://data.iana.org/TLD/tlds-alpha-by-domain.txt"
-            response = requests.get(url, timeout=60)
-            tlds = response.text.splitlines()
-            print("Valid TLDS from url obtained:", len(tlds))
-            if not os.path.isfile("tlds.txt"):
-                with open("tlds.txt", "w+", encoding="utf-8") as f:
-                    if len(tlds) > len(f.readlines()):
-                        f.writelines(tlds)
-        except Exception as e:
-            print("TLD from url failed :", e)
-            traceback.print_exc()
-
-    invalids = "@ # ! $ % & * + = ^ ~ < >".split()
-    regex = re.compile(r"([a-zA-Z0-9-]+\.){1,128}([a-zA-Z]){2,14}")
-    match = regex.search(line)
-    if match and not any(x in match.group(0) for x in invalids):
-        potential_tld = match.group(2).lower()
-        if potential_tld in tlds:
-            return match.group(0)
-    return ""
-
-
-def line_splitter(lines: str) -> dict:
-    """
-    Multiple lines in one string handler.
-    """
-    print(f"Splitting {len(lines)} long line. Assumming nested...")
-    map = []
-    # site_regex = r'((?:[-a-zA-Z0-9@:%_\+.~#?&//=]+(?:\.[-a-zA-Z0-9@%_\+~#?&]+){2,63}))'
-
-    # S E P A R A T O R S:
-    TYPE_1 = "/:"  # DOMAIN:/USERNAME:PASSWORD
-    TYPE_2 = "https://"  # LONG_LINK_WITH_LOTS_OF_SPECIALS USERNAME:PASSWORD"
-
-    if lines.count(TYPE_1) > lines.count(TYPE_2):
-        lines = lines.split(TYPE_1)
-        for line in lines:
-            line = line.replace("https://", "")
-            line = line.replace("http://", "")
-            map.append(line)
-    else:
-        lines = lines.split(TYPE_2)
-        for line in lines:
-            line = line.replace("https://", "")
-            line = line.replace("http://", "")
-            map.append(line)
-    return map
+        raise
