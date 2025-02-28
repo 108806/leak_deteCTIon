@@ -7,6 +7,7 @@ from minio.datatypes import Object
 import hashlib
 import logging
 import io
+import traceback
 
 logger = logging.getLogger(__name__)
 

@@ -70,6 +70,7 @@ services:
       - "./django:/usr/src/app"
       - "./.env:/usr/src/app/.env"
       - "./telegram_downloader/app/channels:/usr/share/Telegram-Files/"
+      - "./my_combolists:/usr/share/combos"
     ports:
       - "8000:8000"
     networks:
@@ -121,6 +122,7 @@ volumes:
   postgres_data:
   es_data:
   minio_data:
+  my_combolists:
 
 networks:
   cti_net:
