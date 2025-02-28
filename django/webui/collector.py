@@ -20,11 +20,11 @@ minio_client = Minio(
     secure=False,
 )
 
-TARGET_PATH = "/usr/share/Telegram-Files/"
+TARGET_PATHS = ["/usr/share/Telegram-Files/", "/usr/share/combos"]
 
 
 def collect_and_upload_files(
-    source_path=TARGET_PATH, bucket_name: str = AWS_STORAGE_BUCKET_NAME
+    source_paths=TARGET_PATHS, bucket_name: str = AWS_STORAGE_BUCKET_NAME
 ):
 
     ACCEPTED_FILETYPES = [".txt", ".lst", ".json"]
@@ -34,34 +34,35 @@ def collect_and_upload_files(
         if not minio_client.bucket_exists(bucket_name):
             minio_client.make_bucket(bucket_name)
 
-        # Walk through the directory
-        for root, _, files in os.walk(source_path):
-            for file in files:
-                print("[*] Processing file: ", file)
-                if any(
-                    file.endswith(x) for x in ACCEPTED_FILETYPES
-                ):  # TODO: unzip the compressed files on the fly.
-                    file_path = os.path.join(root, file)
-                    object_name = os.path.relpath(file_path, source_path).replace(
-                        os.sep, "/"
-                    )
-
-                    with open(file_path, "rb") as data:
-                        minio_client.put_object(
-                            bucket_name,
-                            object_name,
-                            data,
-                            length=os.path.getsize(file_path),
-                            content_type="application/octet-stream",
+        for source_path in TARGET_PATHS:
+            # Walk through the directoies
+            for root, _, files in os.walk(source_path):
+                for file in files:
+                    print("[*] Processing file: ", file)
+                    if any(
+                        file.endswith(x) for x in ACCEPTED_FILETYPES
+                    ):  # TODO: unzip the compressed files on the fly.
+                        file_path = os.path.join(root, file)
+                        object_name = os.path.relpath(file_path, source_path).replace(
+                            os.sep, "/"
                         )
-                    print(f"[*] Uploaded {file_path} to bucket {bucket_name}")
-                else:
-                    print(
-                        "[*] Not matched extension whitelist:",
-                        ACCEPTED_FILETYPES,
-                        "VS",
-                        file,
-                    )
+
+                        with open(file_path, "rb") as data:
+                            minio_client.put_object(
+                                bucket_name,
+                                object_name,
+                                data,
+                                length=os.path.getsize(file_path),
+                                content_type="application/octet-stream",
+                            )
+                        print(f"[*] Uploaded {file_path} to bucket {bucket_name}")
+                    else:
+                        print(
+                            "[*] Not matched extension whitelist:",
+                            ACCEPTED_FILETYPES,
+                            "VS",
+                            file,
+                        )
     except S3Error as e:
         print(f"[***] Error occurred: {e}")
     except Exception as e:
