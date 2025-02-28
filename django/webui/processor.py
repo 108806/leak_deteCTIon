@@ -3,6 +3,7 @@ from django.db import transaction, IntegrityError
 from django.core.exceptions import ValidationError
 from webui.models import ScrapFile, BreachedCredential
 from minio import Minio
+from minio.error import S3Error
 from minio.datatypes import Object
 import hashlib
 import logging
@@ -47,28 +48,47 @@ def process_scrap_files(force_reprocess: bool = False) -> None:
     lines_total = 0
 
     try:
+        # Check if the bucket exists
+        if not client.bucket_exists(bucket_name):
+            logger.warning(f"Bucket {bucket_name} does not exist, nothing to process.")
+            print(f"[*] Bucket {bucket_name} does not exist, nothing to process.")
+            return
+
+        # List objects in bucket
         objects = client.list_objects(bucket_name, recursive=True)
-        for obj in objects:
-            object_key = obj.object_name  # This is the path (key) in MinIO, e.g., "1501020529/1192_Hungary_Combolistfresh.txt"
+        objects_list = list(objects)  # Convert iterator to list for debugging
+
+        if not objects_list:
+            logger.info(f"No objects found in bucket {bucket_name}, nothing to process.")
+            print(f"[*] No objects found in bucket {bucket_name}, nothing to process.")
+            return
+
+        logger.info(f"Found {len(objects_list)} objects in bucket {bucket_name}")
+        print(f"[*] Found {len(objects_list)} objects in bucket {bucket_name}")
+
+        for obj in objects_list:
+            object_key = obj.object_name
             logger.info(f"Processing MinIO object: {object_key}")
+            print(f"[*] Processing MinIO object: {object_key}")
 
-            # Calculate SHA-256 hash and file size by streaming
+            # Stream the entire object content into memory once
             try:
-                hasher = hashlib.sha256()
                 response = client.get_object(bucket_name, object_key)
-                file_size = calculate_file_size(obj)  # Use object metadata for size
-
-                # Stream and hash the object content
-                for chunk in response.stream(8192):  # Read in chunks of 8KB
-                    hasher.update(chunk)
-                file_hash = hasher.hexdigest()
-
-                # Process content into lines for BreachedCredentials
                 content = io.BytesIO()
                 for chunk in response.stream(8192):
                     content.write(chunk)
-                content.seek(0)  # Reset to start for reading lines
-                lines = (line.decode("utf-8").strip() for line in content if line.strip())
+                content.seek(0)  # Reset to start
+
+                # Calculate SHA-256 hash
+                hasher = hashlib.sha256()
+                content.seek(0)  # Rewind to start for hashing
+                for chunk in iter(lambda: content.read(8192), b""):
+                    hasher.update(chunk)
+                file_hash = hasher.hexdigest()
+                logger.debug(f"Calculated hash for {object_key}: {file_hash}")
+
+                # Calculate file size
+                file_size = calculate_file_size(obj)
 
                 # Check if the file has already been processed (by sha256)
                 try:
@@ -76,17 +96,19 @@ def process_scrap_files(force_reprocess: bool = False) -> None:
                         scrap_file, created = ScrapFile.objects.get_or_create(
                             sha256=file_hash,
                             defaults={
-                                "name": object_key,  # Store the MinIO object key as the name
+                                "name": object_key,
                                 "size": file_size,
                             },
                         )
                         if not created and not force_reprocess:
                             logger.info(f"File {object_key} already processed... Not processing again.")
+                            print(f"[*] File {object_key} already processed... Not processing again.")
                             response.close()
                             continue
                         elif not created and force_reprocess:
                             logger.info(f"Forcing reprocess of {object_key}")
-                            scrap_file.size = file_size  # Update size if reprocessing
+                            print(f"[*] Forcing reprocess of {object_key}")
+                            scrap_file.size = file_size
                             scrap_file.save(update_fields=["size"])
 
                 except IntegrityError as e:
@@ -96,16 +118,28 @@ def process_scrap_files(force_reprocess: bool = False) -> None:
 
                 # Process lines into BreachedCredentials
                 try:
-                    for line in lines:
+                    content.seek(0)  # Rewind to start for reading lines
+                    lines = (line.decode("utf-8").strip() for line in content if line.strip())
+                    lines_list = list(lines)  # Convert to list for debugging
+                    logger.info(f"Found {len(lines_list)} lines in {object_key}")
+                    print(f"[*] Found {len(lines_list)} lines in {object_key}")
+
+                    if not lines_list:
+                        logger.warning(f"No non-empty lines found in {object_key}, skipping...")
+                        print(f"[*] No non-empty lines found in {object_key}, skipping...")
+                        response.close()
+                        continue
+
+                    for line in lines_list:
                         if not line:
                             continue
-                        nested_lines = line_splitter(line, max_length=1024)  # Match BreachedCredential max_length
+                        nested_lines = line_splitter(line, max_length=1024)
                         for nested_line in nested_lines:
                             lines_total += 1
                             try:
                                 BreachedCredential.objects.create(
                                     string=nested_line,
-                                    file=scrap_file,  # ForeignKey object
+                                    file=scrap_file,
                                 )
                                 logger.debug(f"Created BreachedCredential for line: {nested_line}")
                             except (ValidationError, Exception) as e:
@@ -115,18 +149,32 @@ def process_scrap_files(force_reprocess: bool = False) -> None:
                     logger.error(f"Error processing lines for {object_key}: {e}")
                     traceback.print_exc()
 
-                response.close()  # Ensure the response is closed
+                response.close()
                 logger.info(f"Processed object: {object_key}")
+                print(f"[*] Processed object: {object_key}")
 
+            except S3Error as e:
+                logger.error(f"S3Error processing object {object_key}: {e}")
+                print(f"[***] S3Error processing object {object_key}: {e}")
+                if 'response' in locals():
+                    response.close()
+                continue
             except Exception as e:
                 logger.error(f"Critical error processing object {object_key}: {e}")
+                print(f"[***] Critical error processing object {object_key}: {e}")
                 traceback.print_exc()
                 if 'response' in locals():
                     response.close()
                 continue
 
         print(f"Total lines read: {lines_total}")
+    except S3Error as e:
+        logger.error(f"S3Error in process_scrap_files: {e}")
+        print(f"[***] S3Error in process_scrap_files: {e}")
+        traceback.print_exc()
+        raise
     except Exception as e:
         logger.error(f"Critical error in process_scrap_files: {e}")
+        print(f"[***] Critical error in process_scrap_files: {e}")
         traceback.print_exc()
         raise
