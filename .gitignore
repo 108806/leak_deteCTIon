@@ -104,4 +104,5 @@ qodana.yaml
 /*/.env
 **/.env
 **/.idea/
+data/postgres_data/
 !data/postgres_data/postgresql.conf

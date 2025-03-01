@@ -70,7 +70,7 @@ def collect_and_upload_files(
 
     # Load the hash cache
     hash_cache = load_hash_cache()
-    uploaded_hashes = set(hash_cache.keys())  # Set of hashes already uploaded to MinIO
+    uploaded_files = set(hash_cache.keys())  # Set of file paths already processed
 
     try:
         # Check if the bucket exists, create if it doesn't
@@ -96,26 +96,32 @@ def collect_and_upload_files(
                             os.sep, "/"
                         )
 
+                        # Check if the file path is already in the cache
+                        if file_path in uploaded_files:
+                            logger.info(
+                                f"File {file_path} already uploaded to bucket {bucket_name}, "
+                                f"skipping upload."
+                            )
+                            continue
+
                         # Calculate the SHA-256 hash of the local file
                         try:
-                            # Check if we've already hashed this file
-                            if file_path in hash_cache:
-                                file_hash = hash_cache[file_path]
-                                logger.debug(f"Found cached hash for {file_path}: {file_hash}")
-                            else:
-                                file_hash = calculate_file_hash(file_path)
-                                hash_cache[file_path] = file_hash
-                                logger.debug(f"Calculated hash for {file_path}: {file_hash}")
+                            file_hash = calculate_file_hash(file_path)
+                            logger.debug(f"Calculated hash for {file_path}: {file_hash}")
                         except Exception as e:
                             logger.error(f"Failed to calculate hash for {file_path}: {e}")
                             continue
 
                         # Check if a file with the same hash has already been uploaded
-                        if file_hash in uploaded_hashes:
+                        if file_hash in hash_cache.values():
                             logger.info(
                                 f"File with hash {file_hash} already uploaded to bucket {bucket_name}, "
                                 f"skipping upload: {file_path}"
                             )
+                            # Still add to cache to avoid recomputing hash in future runs
+                            hash_cache[file_path] = file_hash
+                            uploaded_files.add(file_path)
+                            save_hash_cache(hash_cache)
                             continue
 
                         # Upload the file to MinIO
@@ -129,10 +135,9 @@ def collect_and_upload_files(
                                     content_type="application/octet-stream",
                                 )
                             logger.info(f"Uploaded {file_path} to bucket {bucket_name} as {object_name}")
-                            # Mark the hash as uploaded
-                            uploaded_hashes.add(file_hash)
-                            # Update the hash cache
+                            # Mark the file as uploaded
                             hash_cache[file_path] = file_hash
+                            uploaded_files.add(file_path)
                             save_hash_cache(hash_cache)
                         except S3Error as e:
                             logger.error(f"S3Error while uploading {file_path}: {e}")

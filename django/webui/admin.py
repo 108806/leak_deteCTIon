@@ -9,9 +9,9 @@ class BreachedCredentialAdmin(admin.ModelAdmin):
 
 @admin.register(ScrapFile)
 class ScrapFileAdmin(admin.ModelAdmin):
-    list_display = ("name", "added_at", "size", "sha256", "count")  # Use 'count' instead of 'credential_count'
-    search_fields = ("name", "size", "sha256", "count")  # Use 'count' instead of 'credential_count'
-    list_filter = ("name", "added_at", "sha256", "size")
+    list_display = ("name", "added_at", "size",  "count", "sha256",)  # Use 'count' instead of 'credential_count'
+    search_fields = ("name", "size", "count", "sha256")  # Use 'count' instead of 'credential_count'
+    list_filter = ("name", "added_at","size", "sha256")
 
     def credential_count(self, obj):
         return obj.count  # Display 'count' in admin

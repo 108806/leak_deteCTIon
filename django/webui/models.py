@@ -25,10 +25,6 @@ class ScrapFile(models.Model):
         sha256 (str): SHA-256 hash of the file content, unique identifier.
         added_at (datetime): Timestamp of file addition.
         size (Decimal): Size of the file in MB.
-
-    Example:
-        scrap = ScrapFile(name="leak.txt", size=5.5)
-        scrap.save()
     """
 
     name = models.CharField(max_length=256, db_index=True)
@@ -42,6 +38,8 @@ class ScrapFile(models.Model):
         validators=[MinValueValidator(0.0)],
     )
     count = models.IntegerField(default=0, help_text="Number of associated BreachedCredentials")
+    is_active = models.BooleanField(default=True)
+
     def _calculate_sha256(self) -> str:
         """Calculate the SHA-256 hash of the file content by streaming from MinIO."""
         client = Minio(
@@ -68,21 +66,32 @@ class ScrapFile(models.Model):
             self.sha256 = self._calculate_sha256()
             logger.info(f"Calculated SHA256 for {self.name}: {self.sha256}")
         super().save(*args, **kwargs)
-        # Update count after saving
-        self.count = self.credential_count()
+        # Update count after saving, accessing credential_count as a property
+        self.count = self.credential_count
         super().save(update_fields=['count'])
 
-    def __str__(self) -> str:
-        return f"File: {self.name} (Hash: {self.sha256})"
+    def update_breached_credential_count(self) -> None:
+        """Calculate and update the count of BreachedCredential instances."""
+        self.refresh_from_db()
+        new_count = BreachedCredential.objects.filter(file=self).count()
+        logger.debug(f"Count before update for {self.name}: {new_count} (current: {self.count})")
+        self.count = new_count
+        try:
+            self.save(update_fields=['count'])  # Attempt field-specific save
+            logger.info(f"Updated count for {self.name}: {self.count}")
+        except Exception as e:
+            logger.error(f"Failed to save count for {self.name}: {e}")
+            # Fallback: direct DB update
+            ScrapFile.objects.filter(id=self.id).update(count=new_count)
+            self.refresh_from_db()
+            logger.info(f"Forced count update for {self.name}: {self.count}")
+        if self.count != new_count:
+            logger.error(f"Count mismatch for {self.name}: expected {new_count}, got {self.count}")
 
     @cached_property
     def credential_count(self) -> int:
-        """Returns the number of BreachedCredential instances associated with this ScrapFile, cached for performance."""
-        return self.breached_credentials.count()
-
-    @property
-    def breached_credentials(self) -> "QuerySet[BreachedCredential]":
-        return self.breached_credentials.all()
+        """Cached count for performance, not used in update."""
+        return BreachedCredential.objects.filter(file=self).count()
 
     def delete(self, *args, **kwargs):
         try:
@@ -98,9 +107,6 @@ class ScrapFile(models.Model):
         self.is_active = False
         self.save()
 
-    is_active = models.BooleanField(default=True)
-
-
 @receiver(post_save, sender=ScrapFile)
 def calculate_sha256(sender, instance, created, **kwargs):
     if created and not instance.sha256:
@@ -110,10 +116,8 @@ def calculate_sha256(sender, instance, created, **kwargs):
             logger.info(f"Calculated SHA256 for {instance.name}: {instance.sha256}")
         except ValueError as e:
             logger.error(f"Failed to calculate SHA256 for {instance.name}: {e}")
-            # Optionally, set a default or mark as inactive instead of raising
             instance.sha256 = "hash_calculation_failed"  # Placeholder
             instance.save(update_fields=["sha256"])
-
 
 class BreachedCredential(models.Model):
     """
@@ -131,7 +135,7 @@ class BreachedCredential(models.Model):
 
     string = models.CharField(max_length=1024, db_index=True)
     file = models.ForeignKey(
-        "ScrapFile",  # String literal to break circular dependency
+        "ScrapFile",
         on_delete=models.CASCADE,
         related_name="breached_credentials",
         null=True,
@@ -143,5 +147,5 @@ class BreachedCredential(models.Model):
 
     class Meta:
         indexes = [
-            models.Index(fields=["string"]),  # Additional performance for searches
+            models.Index(fields=["string"]),
         ]
