@@ -42,3 +42,4 @@ flake8
 isort 
 autoflake 
 pylint
+chardet

@@ -41,7 +41,7 @@ class ScrapFile(models.Model):
         default=0.0,
         validators=[MinValueValidator(0.0)],
     )
-
+    count = models.IntegerField(default=0, help_text="Number of associated BreachedCredentials")
     def _calculate_sha256(self) -> str:
         """Calculate the SHA-256 hash of the file content by streaming from MinIO."""
         client = Minio(
@@ -68,6 +68,9 @@ class ScrapFile(models.Model):
             self.sha256 = self._calculate_sha256()
             logger.info(f"Calculated SHA256 for {self.name}: {self.sha256}")
         super().save(*args, **kwargs)
+        # Update count after saving
+        self.count = self.credential_count()
+        super().save(update_fields=['count'])
 
     def __str__(self) -> str:
         return f"File: {self.name} (Hash: {self.sha256})"

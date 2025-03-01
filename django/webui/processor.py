@@ -9,6 +9,7 @@ import hashlib
 import logging
 import io
 import traceback
+import chardet  # For encoding detection
 
 logger = logging.getLogger(__name__)
 
@@ -29,13 +30,24 @@ def line_splitter(line: str, max_length: int = 1024) -> list[str]:
         line = line[len(chunk):].lstrip()
     return chunks
 
-def process_scrap_files(force_reprocess: bool = False) -> None:
+def detect_encoding(content: io.BytesIO) -> str:
+    """Detect the encoding of the content using chardet."""
+    content.seek(0)
+    raw_data = content.read()
+    result = chardet.detect(raw_data)
+    encoding = result['encoding'] if result['encoding'] else 'utf-8'
+    logger.debug(f"Detected encoding: {encoding}")
+    content.seek(0)
+    return encoding
+
+def process_scrap_files(force_reprocess: bool = False, batch_size: int = 100000) -> None:
     """
     Process scrap files from MinIO by streaming content, create ScrapFile and BreachedCredential instances,
     with deduplication by SHA-256 hash.
 
     Args:
         force_reprocess (bool): If True, reprocess files even if already processed.
+        batch_size (int): Number of BreachedCredential objects to batch for bulk_create.
     """
     print("[*] Running process_scrap_files...")
     client = Minio(
@@ -56,7 +68,7 @@ def process_scrap_files(force_reprocess: bool = False) -> None:
 
         # List objects in bucket
         objects = client.list_objects(bucket_name, recursive=True)
-        objects_list = list(objects)  # Convert iterator to list for debugging
+        objects_list = list(objects)
 
         if not objects_list:
             logger.info(f"No objects found in bucket {bucket_name}, nothing to process.")
@@ -77,11 +89,11 @@ def process_scrap_files(force_reprocess: bool = False) -> None:
                 content = io.BytesIO()
                 for chunk in response.stream(8192):
                     content.write(chunk)
-                content.seek(0)  # Reset to start
+                content.seek(0)
 
                 # Calculate SHA-256 hash
                 hasher = hashlib.sha256()
-                content.seek(0)  # Rewind to start for hashing
+                content.seek(0)
                 for chunk in iter(lambda: content.read(8192), b""):
                     hasher.update(chunk)
                 file_hash = hasher.hexdigest()
@@ -116,37 +128,69 @@ def process_scrap_files(force_reprocess: bool = False) -> None:
                     response.close()
                     continue
 
-                # Process lines into BreachedCredentials
+                # Detect encoding and process lines
                 try:
-                    content.seek(0)  # Rewind to start for reading lines
-                    lines = (line.decode("utf-8").strip() for line in content if line.strip())
-                    lines_list = list(lines)  # Convert to list for debugging
+                    content.seek(0)
+                    encoding = detect_encoding(content)
+                    content.seek(0)
+                    raw_lines = content.read().splitlines()
+                    lines = (line.decode(encoding, errors="ignore").strip() for line in raw_lines if line.strip())
+                    lines_list = list(lines)
                     logger.info(f"Found {len(lines_list)} lines in {object_key}")
                     print(f"[*] Found {len(lines_list)} lines in {object_key}")
 
-                    if not lines_list:
+                    # Log first few lines for debugging
+                    if lines_list:
+                        logger.debug(f"First 5 lines of {object_key}: {lines_list[:5]}")
+                        print(f"[*] First 5 lines of {object_key}: {lines_list[:5]}")
+                    else:
                         logger.warning(f"No non-empty lines found in {object_key}, skipping...")
                         print(f"[*] No non-empty lines found in {object_key}, skipping...")
                         response.close()
                         continue
 
+                    # Batch process lines for BreachedCredentials
+                    credential_objects = []
                     for line in lines_list:
                         if not line:
                             continue
                         nested_lines = line_splitter(line, max_length=1024)
                         for nested_line in nested_lines:
                             lines_total += 1
-                            try:
-                                BreachedCredential.objects.create(
-                                    string=nested_line,
-                                    file=scrap_file,
-                                )
-                                logger.debug(f"Created BreachedCredential for line: {nested_line}")
-                            except (ValidationError, Exception) as e:
-                                logger.error(f"Error saving line from {object_key}: {nested_line}, Error: {e}")
-                                traceback.print_exc()
+                            credential_objects.append(
+                                BreachedCredential(string=nested_line, file=scrap_file)
+                            )
+
+                            # Bulk create in batches
+                            if len(credential_objects) >= batch_size:
+                                try:
+                                    BreachedCredential.objects.bulk_create(
+                                        credential_objects, batch_size=batch_size, ignore_conflicts=True
+                                    )
+                                    logger.info(f"Created {len(credential_objects)} BreachedCredential records for {object_key}")
+                                    print(f"[*] Created {len(credential_objects)} BreachedCredential records for {object_key}")
+                                    credential_objects = []
+                                except (ValidationError, Exception) as e:
+                                    logger.error(f"Error bulk creating credentials for {object_key}: {e}")
+                                    print(f"[***] Error bulk creating credentials for {object_key}: {e}")
+                                    traceback.print_exc()
+
+                    # Create remaining credentials
+                    if credential_objects:
+                        try:
+                            BreachedCredential.objects.bulk_create(
+                                credential_objects, batch_size=batch_size, ignore_conflicts=True
+                            )
+                            logger.info(f"Created {len(credential_objects)} BreachedCredential records for {object_key}")
+                            print(f"[*] Created {len(credential_objects)} BreachedCredential records for {object_key}")
+                        except (ValidationError, Exception) as e:
+                            logger.error(f"Error bulk creating credentials for {object_key}: {e}")
+                            print(f"[***] Error bulk creating credentials for {object_key}: {e}")
+                            traceback.print_exc()
+
                 except Exception as e:
                     logger.error(f"Error processing lines for {object_key}: {e}")
+                    print(f"[***] Error processing lines for {object_key}: {e}")
                     traceback.print_exc()
 
                 response.close()

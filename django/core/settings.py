@@ -20,6 +20,7 @@ load_dotenv()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+#TIME_ZONE = 'Europe/Warsaw'
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
@@ -102,7 +103,7 @@ WSGI_APPLICATION = "core.wsgi.application"
 
 # Database
 # https://docs.djangoproject.com/en/4.2/ref/settings/#databases
-
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 5000
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
