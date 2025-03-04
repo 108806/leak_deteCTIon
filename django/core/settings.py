@@ -31,18 +31,18 @@ SECRET_KEY = "django-insecure-h%3vpt@om%_05h4yih^ws#*8ktkow3zsr9l(e!u3ri1vh&9$^&
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-if DEBUG:
-    print("\n", os.getcwd(), os.listdir(os.getcwd()), os.environ)
-    print(
-        *[
-            "NAME" + (os.getenv("POSTGRES_DATA") or "Not Set"),
-            "USER" + (os.getenv("POSTGRES_USER") or "Not Set"),
-            "PASSWORD" + (os.getenv("POSTGRES_PASS") or "Not Set"),
-            "HOST" + "postgres",
-            "PORT" + "5432",
-        ]
-    )
-time.sleep(3)
+# if DEBUG:
+#     print("\n", os.getcwd(), os.listdir(os.getcwd()), os.environ)
+#     print(
+#         *[
+#             "NAME" + (os.getenv("POSTGRES_DATA") or "Not Set"),
+#             "USER" + (os.getenv("POSTGRES_USER") or "Not Set"),
+#             "PASSWORD" + (os.getenv("POSTGRES_PASS") or "Not Set"),
+#             "HOST" + "postgres",
+#             "PORT" + "5432",
+#         ]
+#     )
+# time.sleep(3)
 
 
 ALLOWED_HOSTS = [
@@ -62,6 +62,7 @@ ALLOWED_HOSTS = [
 INSTALLED_APPS = [
     "webui",
     "django_q",
+    'django_elasticsearch_dsl',
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -117,7 +118,7 @@ DATABASES = {
 
 ELASTICSEARCH_DSL = {
     "default": {
-        "hosts": "elastic:9200"  # 'elastic' is the service name from docker-compose
+        "hosts": "http://elastic:9200"  # 'elastic' is the service name from docker-compose
     },
 }
 
@@ -175,11 +176,49 @@ MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 Q_CLUSTER = {
-    "name": "Django-Q",
-    "orm": "default",  # Use the default database as the task broker
-    "retry": 3601,  # Retry failed tasks after 360 seconds
-    "timeout": 3600,  # Task timeout in seconds
-    "workers": 4,  # Number of worker processes
-    "queue_limit": 50,  # Maximum number of tasks in the queue
-    "bulk": 10,  # Number of tasks fetched per worker
+    'name': 'leak_detection',
+    'workers': 4,
+    'recycle': 500,
+    'timeout': 300,  # 5 minut
+    'retry': 600,    # 10 minut – większe niż timeout
+    'queue_limit': 5000,
+    'orm': 'default',
+}
+
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'level': 'INFO',
+        },
+    },
+    'loggers': {
+        '': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+        'django': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+        'webui': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+        'django_q': {
+            'handlers': ['console'],
+            'level': 'INFO',
+        },
+        'elasticsearch': {  # Added this
+            'handlers': ['console'],
+            'level': 'WARNING',  # Only log warnings/errors
+        },
+        'elastic_transport': {  # Added this
+            'handlers': ['console'],
+            'level': 'WARNING',
+        },
+    },
 }

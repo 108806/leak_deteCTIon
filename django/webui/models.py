@@ -107,6 +107,9 @@ class ScrapFile(models.Model):
         self.is_active = False
         self.save()
 
+    def __str__(self):
+        return self.name
+
 @receiver(post_save, sender=ScrapFile)
 def calculate_sha256(sender, instance, created, **kwargs):
     if created and not instance.sha256:
@@ -133,7 +136,7 @@ class BreachedCredential(models.Model):
         cred.save()
     """
 
-    string = models.CharField(max_length=1024, db_index=True)
+    string = models.CharField(max_length=1024)
     file = models.ForeignKey(
         "ScrapFile",
         on_delete=models.CASCADE,
@@ -142,10 +145,12 @@ class BreachedCredential(models.Model):
     )
     added_at = models.DateTimeField(auto_now_add=True)
 
-    def __str__(self) -> str:
+    def hash(self) -> str:
         return f"Credential: {hashlib.sha256(self.string.encode('utf-8')).hexdigest()}"
 
+    
+    def __str__(self):
+        return self.string  # Display email:password in admin
+
     class Meta:
-        indexes = [
-            models.Index(fields=["string"]),
-        ]
+        pass

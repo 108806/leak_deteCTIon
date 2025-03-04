@@ -82,6 +82,7 @@ services:
              pip install -r requirements.txt && 
              python manage.py makemigrations --noinput && 
              python manage.py migrate --noinput && 
+             python manage.py index_existing_scrap &&
              python manage.py runserver 0.0.0.0:8000"
 
   qcluster:
@@ -96,8 +97,10 @@ services:
     depends_on:
       - postgres
       - django
+      - elastic
     command: >
-      sh -c "pip install --upgrade pip; pip install -r requirements.txt && python manage.py qcluster"
+      sh -c "pip install --upgrade pip && pip install -r requirements.txt && sleep 10 && python manage.py qcluster"
+    restart: always  # Ensure it restarts on failure
 
   telegram-downloader:
     image: python:3.10

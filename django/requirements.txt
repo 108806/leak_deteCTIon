@@ -43,3 +43,4 @@ isort
 autoflake 
 pylint
 chardet
+psutil

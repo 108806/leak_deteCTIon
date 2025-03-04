@@ -5,6 +5,8 @@ from django.core.management.base import BaseCommand, CommandError
 from django.contrib.auth.models import User  # Use your custom user model if different
 from django.db.models import Q  # Add this import
 import logging
+import traceback 
+
 
 # Configure logging
 logger = logging.getLogger(__name__)
