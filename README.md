@@ -30,3 +30,9 @@ docker exec -it django curl -X GET "http://elastic:9200/breached_credentials/_co
 
 #ES Rebuild index
 python manage.py search_index --rebuild -f
+
+#BAN SOME IP 
+sudo fail2ban-client set <jail> unbanip <IP>
+
+#UNBAN 
+sudo fail2ban-client set sshd unbanip 192.168.1.100

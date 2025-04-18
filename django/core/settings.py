@@ -120,6 +120,22 @@ ELASTICSEARCH_DSL = {
     "default": {
         "hosts": "http://elastic:9200"
     },
+    "analysis": {
+        "analyzer": {
+            "ngram_analyzer": {
+                "tokenizer": "ngram_tokenizer",
+                "filter": ["lowercase"]
+            }
+        },
+        "tokenizer": {
+            "ngram_tokenizer": {
+                "type": "ngram",
+                "min_gram": 3,
+                "max_gram": 15,
+                "token_chars": ["letter", "digit", "symbol"]
+            }
+        }
+    }
 }
 
 
@@ -206,17 +222,17 @@ LOGGING = {
         },
         'webui': {
             'handlers': ['console'],
-            'level': 'INFO',
+            'level': 'DEBUG',
         },
         'django_q': {
             'handlers': ['console'],
             'level': 'INFO',
         },
-        'elasticsearch': {  # Added this
+        'elasticsearch': {
             'handlers': ['console'],
-            'level': 'WARNING',  # Only log warnings/errors
+            'level': 'WARNING',
         },
-        'elastic_transport': {  # Added this
+        'elastic_transport': {
             'handlers': ['console'],
             'level': 'WARNING',
         },

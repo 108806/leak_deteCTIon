@@ -8,7 +8,7 @@ from elasticsearch_dsl.analysis import analyzer, tokenizer
 # Define custom analyzers
 ngram_analyzer = analyzer(
     'ngram_analyzer',
-    tokenizer=tokenizer('ngram_tokenizer', 'ngram', min_gram=1, max_gram=2),
+    tokenizer=tokenizer('ngram_tokenizer', 'ngram', min_gram=3, max_gram=15),
     filter=['lowercase']
 )
 
@@ -38,6 +38,7 @@ class BreachedCredentialDocument(Document):
         settings = {
             'number_of_shards': 1,
             'number_of_replicas': 0,
+            'index.max_ngram_diff': 12,
             'analysis': {
                 'analyzer': {
                     'ngram_analyzer': {
@@ -48,8 +49,8 @@ class BreachedCredentialDocument(Document):
                 'tokenizer': {
                     'ngram_tokenizer': {
                         'type': 'ngram',
-                        'min_gram': 1,
-                        'max_gram': 2,
+                        'min_gram': 3,
+                        'max_gram': 15,
                         'token_chars': ['letter', 'digit', 'symbol']
                     }
                 }

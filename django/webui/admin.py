@@ -12,8 +12,16 @@ from datetime import datetime, timedelta
 import logging
 
 # Configure logging to ensure debug output
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('webui')
+logger.setLevel(logging.DEBUG)
+
+# Add console handler if not already present
+if not logger.handlers:
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
 
 # Register default Django admin models
 admin.site.register(Session)
@@ -41,40 +49,50 @@ class BreachedCredentialAdmin(admin.ModelAdmin):
         if not search_term:
             return queryset, False
 
+        print(f"\n[*] DEBUG: Search term: {search_term}")
+        print(f"[*] DEBUG: Initial queryset count: {queryset.count()}")
+
         # Use Elasticsearch for searching
         search = BreachedCredentialDocument.search()
+        print(f"[*] DEBUG: Using index: {search._index}")
         
-        # Create a multi-match query that searches across different fields
+        # Use query_string with wildcards
         query = Q(
-            'multi_match',
-            query=search_term,
-            fields=[
-                'string^3',  # Boost the main string field
-                'string.ngram^2',  # Include ngram matches with lower boost
-                'string.edge_ngram^2',  # Include edge ngram matches with lower boost
-            ],
-            type='best_fields',
-            operator='or',
-            fuzziness='AUTO'
+            'query_string',
+            query=f"*{search_term}*",
+            fields=['string', 'string.ngram'],
+            analyze_wildcard=True
         )
-        
-        # Add filters for any existing filters
-        if queryset.exists():
-            ids = list(queryset.values_list('id', flat=True))
-            query = query & Q('terms', id=ids)
-        
         search = search.query(query)
         
-        # Execute the search
+        # Set a larger size for the search results
+        search = search.extra(size=10000)  # Return up to 10k results
+        
+        # Print the actual query being sent to Elasticsearch
+        print(f"[*] DEBUG: Full Elasticsearch query: {search.to_dict()}")
+        
+        # Execute the search without any filters
         response = search.execute()
+        print(f"[*] DEBUG: Raw Elasticsearch response total: {response.hits.total.value}")
+        print(f"[*] DEBUG: Raw Elasticsearch response hits: {len(response.hits)}")
+        
+        # Print first few hits to verify content and IDs
+        print("\n[*] DEBUG: First 5 hits:")
+        for hit in response.hits[:5]:
+            print(f"  - ID: {hit.meta.id} (type: {type(hit.meta.id)})")
+            print(f"  - String: {hit.string}")
         
         # Get the IDs from the search results
-        result_ids = [hit.id for hit in response]
+        result_ids = [hit.meta.id for hit in response]
         
         # Get the queryset with the results in the same order as the search
         if result_ids:
+            # Convert IDs to integers if they're strings
+            result_ids = [int(id) if isinstance(id, str) else id for id in result_ids]
+            
             preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(result_ids)])
             queryset = queryset.filter(id__in=result_ids).order_by(preserved)
+            print(f"[*] DEBUG: Final queryset count: {queryset.count()}")
         else:
             queryset = queryset.none()
         
@@ -82,12 +100,20 @@ class BreachedCredentialAdmin(admin.ModelAdmin):
 
     def get_queryset(self, request):
         logger.debug('[*] Get queryset was triggered')
+        
+        # If this is a search request, let get_search_results handle it
+        if request.GET.get('q'):
+            return super().get_queryset(request)
+            
+        # Otherwise, handle normal list view with pagination
         page = int(request.GET.get('p', 1))
         per_page = self.list_per_page
         start = (page - 1) * per_page
         end = start + per_page
+        
         search = BreachedCredentialDocument.search()
-
+        
+        # Apply date filters if present
         date_filter = request.GET.get('added_at__day', None)
         if date_filter:
             today = timezone.now().date()
@@ -104,18 +130,27 @@ class BreachedCredentialAdmin(admin.ModelAdmin):
                 start_date = today.replace(month=1, day=1)
                 end_date = today.replace(month=12, day=31)
             search = search.filter('range', indexed_at={'gte': start_date, 'lte': end_date})
-
+        
+        # Apply pagination
         search = search[start:end]
-        es_ids = [int(hit.id) for hit in search]
+        es_ids = [hit.meta.id for hit in search]
+        
         logger.debug("ES IDs retrieved: %d - %s", len(es_ids), es_ids[:10])
         if not es_ids:
             return BreachedCredential.objects.none()
+            
         queryset = BreachedCredential.objects.filter(id__in=es_ids).select_related('file')
         logger.debug("PSQL found %d records for IDs: %s", queryset.count(), es_ids[:10])
         return queryset
 
     def get_paginator(self, request, queryset, per_page, orphans=0, allow_empty_first_page=True):
-        total_count = BreachedCredentialDocument.search().count()
+        # If this is a search request, use the actual count from the queryset
+        if request.GET.get('q'):
+            total_count = queryset.count()
+        else:
+            # For normal list view, use Elasticsearch count
+            total_count = BreachedCredentialDocument.search().count()
+            
         paginator = Paginator(queryset, per_page, orphans, allow_empty_first_page)
         paginator.count = total_count
         logger.debug("Paginator total_count: %d", total_count)

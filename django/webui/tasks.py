@@ -5,7 +5,7 @@ import logging
 import time
 from django.db.models import Q, F
 from django.utils import timezone
-from celery import task
+from celery import shared_task
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,7 @@ def index_breached_credential(scrap_file_id):
     except Exception as e:
         logger.error(f"Error indexing ScrapFile {scrap_file_id}: {str(e)}", exc_info=True)
 
-@task
+@shared_task
 def index_breached_credentials():
     """Index all breached credentials in Elasticsearch."""
     try:
