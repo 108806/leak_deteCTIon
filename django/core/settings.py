@@ -118,7 +118,7 @@ DATABASES = {
 
 ELASTICSEARCH_DSL = {
     "default": {
-        "hosts": "http://elastic:9200"  # 'elastic' is the service name from docker-compose
+        "hosts": "http://elastic:9200"
     },
 }
 

@@ -3,6 +3,9 @@ from webui.documents import BreachedCredentialDocument
 from webui.models import ScrapFile
 import logging
 import time
+from django.db.models import Q, F
+from django.utils import timezone
+from celery import task
 
 logger = logging.getLogger(__name__)
 
@@ -53,3 +56,45 @@ def index_breached_credential(scrap_file_id):
         logger.debug(f"Finished indexing {processed}/{total} credentials for ScrapFile {scrap_file_id}")
     except Exception as e:
         logger.error(f"Error indexing ScrapFile {scrap_file_id}: {str(e)}", exc_info=True)
+
+@task
+def index_breached_credentials():
+    """Index all breached credentials in Elasticsearch."""
+    try:
+        # Get all credentials that need indexing
+        credentials = BreachedCredential.objects.filter(
+            Q(indexed=False) | Q(modified__gt=F('last_indexed'))
+        ).select_related('file')
+        
+        if not credentials.exists():
+            return "No credentials need indexing"
+        
+        # Bulk index the credentials
+        actions = []
+        for credential in credentials:
+            doc = BreachedCredentialDocument(
+                meta={'id': credential.id},
+                string=credential.string,
+                file_id=credential.file.id,
+                file_name=credential.file.name,
+                file_size=credential.file.size,
+                file_uploaded_at=credential.file.uploaded_at,
+                created_at=credential.created_at,
+                modified=credential.modified
+            )
+            actions.append(doc)
+        
+        # Bulk index the documents
+        BreachedCredentialDocument.bulk(actions)
+        
+        # Update the indexed status
+        credentials.update(
+            indexed=True,
+            last_indexed=timezone.now()
+        )
+        
+        return f"Successfully indexed {len(credentials)} credentials"
+        
+    except Exception as e:
+        logger.error("Error indexing credentials: %s", str(e))
+        raise

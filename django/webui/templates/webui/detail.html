@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Credential Details{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h2 class="mb-0">Credential Details</h2>
+            <div>
+                <a href="{% url 'webui:update' credential.pk %}" class="btn btn-primary">
+                    <i class="fas fa-edit"></i> Edit
+                </a>
+                <a href="{% url 'webui:delete' credential.pk %}" class="btn btn-danger">
+                    <i class="fas fa-trash"></i> Delete
+                </a>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <h5 class="card-title">Credential Information</h5>
+                    <table class="table">
+                        <tbody>
+                            <tr>
+                                <th scope="row">ID</th>
+                                <td>{{ credential.id }}</td>
+                            </tr>
+                            <tr>
+                                <th scope="row">Credential</th>
+                                <td><code>{{ credential.string }}</code></td>
+                            </tr>
+                            <tr>
+                                <th scope="row">Source</th>
+                                <td>{{ credential.source|default:"N/A" }}</td>
+                            </tr>
+                            <tr>
+                                <th scope="row">Added At</th>
+                                <td>{{ credential.added_at|date:"Y-m-d H:i:s" }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="col-md-6">
+                    <h5 class="card-title">File Information</h5>
+                    <table class="table">
+                        <tbody>
+                            <tr>
+                                <th scope="row">File Name</th>
+                                <td>{{ credential.file.name|default:"N/A" }}</td>
+                            </tr>
+                            <tr>
+                                <th scope="row">File Size</th>
+                                <td>{{ credential.file.size|filesizeformat|default:"N/A" }}</td>
+                            </tr>
+                            <tr>
+                                <th scope="row">File Uploaded At</th>
+                                <td>{{ credential.file.uploaded_at|date:"Y-m-d H:i:s"|default:"N/A" }}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <div class="card-footer">
+            <a href="{% url 'webui:list' %}" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Back to List
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %} 

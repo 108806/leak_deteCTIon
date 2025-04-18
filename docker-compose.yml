@@ -66,6 +66,12 @@ services:
     image: python:3.10
     container_name: django
     working_dir: /usr/src/app
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASS}
+      POSTGRES_DATA: ${POSTGRES_DATA}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
     volumes:
       - "./django:/usr/src/app"
       - "./.env:/usr/src/app/.env"
