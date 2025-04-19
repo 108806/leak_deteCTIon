@@ -10,6 +10,7 @@ from typing import Optional
 from minio import Minio
 from core.settings import AWS_S3_ENDPOINT_URL, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_STORAGE_BUCKET_NAME
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +137,7 @@ class BreachedCredential(models.Model):
         cred.save()
     """
 
+    id = models.CharField(max_length=32, primary_key=True, editable=False)
     string = models.CharField(max_length=1024)
     file = models.ForeignKey(
         "ScrapFile",
@@ -145,10 +147,16 @@ class BreachedCredential(models.Model):
     )
     added_at = models.DateTimeField(auto_now_add=True)
 
+    def save(self, *args, **kwargs):
+        if not self.id:
+            # Generate a unique ID based on the string content and timestamp
+            unique_string = f"{self.string}{time.time()}"
+            self.id = hashlib.md5(unique_string.encode()).hexdigest()
+        super().save(*args, **kwargs)
+
     def hash(self) -> str:
         return f"Credential: {hashlib.sha256(self.string.encode('utf-8')).hexdigest()}"
 
-    
     def __str__(self):
         return self.string  # Display email:password in admin
 

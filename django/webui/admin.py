@@ -87,9 +87,7 @@ class BreachedCredentialAdmin(admin.ModelAdmin):
         
         # Get the queryset with the results in the same order as the search
         if result_ids:
-            # Convert IDs to integers if they're strings
-            result_ids = [int(id) if isinstance(id, str) else id for id in result_ids]
-            
+            # Use string IDs directly
             preserved = Case(*[When(pk=pk, then=pos) for pos, pk in enumerate(result_ids)])
             queryset = queryset.filter(id__in=result_ids).order_by(preserved)
             print(f"[*] DEBUG: Final queryset count: {queryset.count()}")
@@ -129,7 +127,7 @@ class BreachedCredentialAdmin(admin.ModelAdmin):
             elif date_filter == 'this_year':
                 start_date = today.replace(month=1, day=1)
                 end_date = today.replace(month=12, day=31)
-            search = search.filter('range', indexed_at={'gte': start_date, 'lte': end_date})
+            search = search.filter('range', added_at={'gte': start_date, 'lte': end_date})
         
         # Apply pagination
         search = search[start:end]

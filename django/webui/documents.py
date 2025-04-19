@@ -14,24 +14,16 @@ ngram_analyzer = analyzer(
 
 @registry.register_document
 class BreachedCredentialDocument(Document):
-    id = fields.IntegerField(attr='id')
     string = fields.TextField(
-        analyzer=ngram_analyzer,
         fields={
-            'keyword': fields.KeywordField(),
-            'ngram': fields.TextField(analyzer=ngram_analyzer)
+            'ngram': fields.TextField(analyzer='ngram_analyzer')
         }
     )
-    file = fields.ObjectField(properties={
-        'name': fields.TextField(),
-    })
-    indexed_at = fields.DateField()
-    file_id = Long()
-    file_name = Keyword()
-    file_size = Long()
-    file_uploaded_at = Date()
-    created_at = Date()
-    modified = Date()
+    added_at = fields.DateField()
+    file_id = fields.IntegerField()
+    file_name = fields.TextField()
+    file_size = fields.FloatField()
+    file_uploaded_at = fields.DateField()
 
     class Index:
         name = 'breached_credentials'
@@ -60,12 +52,15 @@ class BreachedCredentialDocument(Document):
     class Django:
         model = BreachedCredential
         fields = [
-            'added_at',
+            'id',
         ]
         related_models = [ScrapFile]
 
     def get_queryset(self):
         return self.django.model.objects.all().select_related('file')
+
+    def prepare_id(self, instance):
+        return str(instance.id)  # Ensure ID is always a string
 
     def prepare_file(self, instance):
         if instance.file:
