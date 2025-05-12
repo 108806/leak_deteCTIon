@@ -3,13 +3,26 @@ from django_elasticsearch_dsl.registries import registry
 from webui.models import BreachedCredential, ScrapFile
 from datetime import datetime
 from elasticsearch_dsl import Text, Date, Long, Keyword
-from elasticsearch_dsl.analysis import analyzer, tokenizer
+from elasticsearch_dsl.analysis import analyzer, tokenizer, token_filter
 
 # Define custom analyzers
+credential_ngram = token_filter(
+    'credential_ngram',
+    type='ngram',
+    min_gram=3,
+    max_gram=4
+)
+
 ngram_analyzer = analyzer(
     'ngram_analyzer',
     tokenizer=tokenizer('ngram_tokenizer', 'ngram', min_gram=3, max_gram=15),
     filter=['lowercase']
+)
+
+credential_analyzer = analyzer(
+    'credential_analyzer',
+    tokenizer='standard',
+    filter=['lowercase', 'credential_ngram']
 )
 
 @registry.register_document

@@ -51,11 +51,14 @@ class Command(BaseCommand):
                 
                 for file_obj in batch:
                     try:
+                        # Convert size from bytes to MB
+                        size_in_mb = file_obj.size / (1024 * 1024)
+                        
                         # Create or get ScrapFile record
                         scrap_file, created = ScrapFile.objects.get_or_create(
                             name=file_obj.object_name,
                             defaults={
-                                'size': file_obj.size,
+                                'size': size_in_mb,  # Store size in MB
                                 'count': 0  # Will be updated by the task
                             }
                         )
@@ -70,4 +73,4 @@ class Command(BaseCommand):
                 logger.info(f"Processed batch {i//options['batch_size'] + 1} of {(total_files-1)//options['batch_size'] + 1} in {batch_time:.2f}s")
             
             total_time = time.time() - start_time
-            logger.info(f"Finished processing {directory} in {total_time:.2f}s") 
+            logger.info(f"Finished processing {directory} in {total_time:.2f}s")

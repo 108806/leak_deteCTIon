@@ -99,6 +99,14 @@ my_combolists/**
 qodana.yaml
 *.env
 *.env.bk
+file_hashes.json
+admin_usernames.txt
+credentials_search_results.md
+frost_results.txt
+frost_search_results.md
+frost_search_results_enhanced.md
+frost_search_summary.md
+frost_summary.txt
 .env
 .env.bk
 /*/.env

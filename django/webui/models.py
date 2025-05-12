@@ -47,12 +47,16 @@ class ScrapFile(models.Model):
             AWS_S3_ENDPOINT_URL,
             access_key=AWS_ACCESS_KEY_ID,
             secret_key=AWS_SECRET_ACCESS_KEY,
-            secure=False,  # Use True if SSL/TLS enabled; adjust based on AWS_S3_ENDPOINT_URL
+            secure=False,
         )
         try:
             response = client.get_object(AWS_STORAGE_BUCKET_NAME, self.name)
+            # Get file size in MB
+            stats = client.stat_object(AWS_STORAGE_BUCKET_NAME, self.name)
+            self.size = stats.size / (1024 * 1024)  # Convert bytes to MB
+            
             sha256_hash = hashlib.sha256()
-            for chunk in response.stream(8192):  # Read in chunks of 8KB
+            for chunk in response.stream(8192):
                 sha256_hash.update(chunk)
             hash_value = sha256_hash.hexdigest()
             response.close()

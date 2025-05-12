@@ -12,23 +12,54 @@ import io
 import hashlib
 from elasticsearch import Elasticsearch
 from concurrent.futures import ThreadPoolExecutor
+from queue import Queue
 import gc
 from django.core.exceptions import ObjectDoesNotExist
+from django.db import models
 
 logger = logging.getLogger(__name__)
+
+def line_splitter(line: str, max_length: int = 1024) -> list[str]:
+    """Split a line into multiple strings if longer than max_length, based on the most frequent separator."""
+    if len(line) <= max_length:
+        return [line]
+    separators = ['https:\\\\', '\\\\', '::', ':', ';', ',', '\r\n', '\n', '\\r\\n']
+    sep_count = {s: line.count(s) for s in separators}
+    max_separator = max(sep_count, key=sep_count.get)
+    logger.debug(f"Line: '{line[:50]}...', Separator counts: {sep_count}, Chosen: '{max_separator}'")
+    split_lines = [s.strip() for s in line.split(max_separator) if s.strip()]
+    print(f"[*] Split {len(line)} chars into {len(split_lines)} parts using '{max_separator}'")
+    return [s[:max_length] for s in split_lines if len(s) > 0]
 
 def process_chunk(credentials, es_actions, es_client):
     """Process a chunk of credentials and actions"""
     if not credentials:
         return 0
         
+    # Split long strings before bulk create
+    processed_credentials = []
+    for cred in credentials:
+        if len(cred.string) > 1024:
+            split_strings = line_splitter(cred.string)
+            for split_str in split_strings:
+                # Create new credential with split string
+                new_cred = BreachedCredential(
+                    id=hashlib.md5(f"{split_str}{time.time()}".encode()).hexdigest(),
+                    string=split_str,
+                    file=cred.file,
+                    added_at=cred.added_at
+                )
+                processed_credentials.append(new_cred)
+        else:
+            processed_credentials.append(cred)
+    
     try:
-        # Try bulk create first
-        BreachedCredential.objects.bulk_create(credentials, batch_size=1000, ignore_conflicts=True)
+        # Try bulk create with processed credentials
+        BreachedCredential.objects.bulk_create(processed_credentials, batch_size=1000, ignore_conflicts=True)
     except Exception as e:
         logger.error(f"Error in bulk create: {str(e)}")
         # If bulk create fails, try individual inserts
-        for cred in credentials:
+        for cred in processed_credentials:
             try:
                 BreachedCredential.objects.create(
                     id=cred.id,
@@ -60,9 +91,108 @@ def process_chunk(credentials, es_actions, es_client):
         except Exception as e:
             logger.error(f"Error in Elasticsearch bulk: {str(e)}")
     
-    return len(credentials)
+    return len(processed_credentials)
 
-@shared_task(bind=True, max_retries=0)  # Disable retries for this task
+def writer_process(queue, es_client, total_processed):
+    """Single writer process to handle database inserts"""
+    credentials = []
+    es_actions = []
+    chunk_size = 10000
+    
+    while True:
+        try:
+            item = queue.get(timeout=5)  # 5 second timeout
+            if item is None:  # Signal to stop
+                break
+                
+            credentials.append(item['credential'])
+            es_actions.append(item['es_action'])
+            
+            if len(credentials) >= chunk_size:
+                try:
+                    process_chunk(credentials, es_actions, es_client)
+                    total_processed[0] += len(credentials)
+                    credentials.clear()
+                    es_actions.clear()
+                except Exception as e:
+                    logger.error(f"Error in writer process: {str(e)}")
+                    if "deadlock" in str(e).lower():
+                        time.sleep(5)  # Wait before retrying
+                        continue
+                    raise
+                    
+        except Exception as e:
+            if isinstance(e, TimeoutError):
+                break
+            logger.error(f"Error in writer process: {str(e)}")
+            raise
+    
+    # Process any remaining items
+    if credentials:
+        try:
+            process_chunk(credentials, es_actions, es_client)
+            total_processed[0] += len(credentials)
+        except Exception as e:
+            logger.error(f"Error processing final chunk: {str(e)}")
+            raise
+
+def clean_string(s: str) -> str:
+    """Clean a string by removing NULL characters and other problematic characters."""
+    # Remove NULL characters and other control characters
+    s = ''.join(char for char in s if ord(char) >= 32 or char in '\n\r\t')
+    # Remove any remaining NULL bytes
+    s = s.replace('\x00', '')
+    # Remove any other problematic characters
+    s = s.encode('ascii', 'ignore').decode('ascii')
+    return s.strip()
+
+def reader_process(chunk, scrap_file, queue):
+    """Process a chunk of data and put results in queue"""
+    try:
+        for line in chunk.splitlines():
+            line = line.strip()
+            if ':' in line:  # Basic validation
+                # Clean the line before processing
+                line = clean_string(line)
+                if not line:  # Skip if line is empty after cleaning
+                    continue
+                    
+                # Generate ID
+                unique_string = line.strip()
+                cred_id = hashlib.md5(unique_string.encode()).hexdigest()
+                
+                # Create credential
+                credential = BreachedCredential(
+                    id=cred_id,
+                    string=line,
+                    file=scrap_file,
+                    added_at=timezone.now()
+                )
+                
+                # Prepare Elasticsearch action
+                es_action = {
+                    '_index': 'breached_credentials',
+                    '_id': cred_id,
+                    '_source': {
+                        'string': line,
+                        'added_at': timezone.now().isoformat(),
+                        'file_id': scrap_file.id,
+                        'file_name': scrap_file.name,
+                        'file_size': float(scrap_file.size),
+                        'file_uploaded_at': scrap_file.added_at.isoformat()
+                    }
+                }
+                
+                # Put in queue
+                queue.put({
+                    'credential': credential,
+                    'es_action': es_action
+                })
+    except Exception as e:
+        logger.error(f"Error in reader process: {str(e)}")
+        raise
+
+@shared_task(bind=True, max_retries=3)
 def index_breached_credential(self, scrap_file_id):
     """
     Index a breached credential file.
@@ -111,117 +241,89 @@ def index_breached_credential(self, scrap_file_id):
                 'file_name': scrap_file.name
             }
         
-        # Process file content in chunks
-        logger.debug(f"Processing file content")
-        credentials = []
-        es_actions = []
-        chunk_size = 50000  # Increased chunk size
-        buffer = ""
-        total_processed = 0
+        # Setup queue and shared counter
+        queue = Queue(maxsize=100000)  # Limit queue size to prevent memory issues
+        total_processed = [0]  # Use list for mutable shared state
         last_log_time = time.time()
         
-        # Use ThreadPoolExecutor for parallel processing
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            futures = []
+        # Start writer process
+        with ThreadPoolExecutor(max_workers=1) as writer_executor:
+            writer_future = writer_executor.submit(writer_process, queue, es_client, total_processed)
             
-            try:
-                for chunk in data.stream(32768):  # Increased buffer size
-                    buffer += chunk.decode('utf-8', errors='replace')
-                    lines = buffer.splitlines()
-                    buffer = lines.pop() if lines else ""
+            # Start reader processes
+            with ThreadPoolExecutor(max_workers=4) as reader_executor:
+                futures = []
+                buffer = ""
+                
+                try:
+                    for chunk in data.stream(32768):
+                        buffer += chunk.decode('utf-8', errors='replace')
+                        chunks = buffer.splitlines()
+                        buffer = chunks.pop() if chunks else ""
+                        
+                        # Submit chunks to reader processes
+                        for chunk in chunks:
+                            futures.append(reader_executor.submit(reader_process, chunk, scrap_file, queue))
+                            
+                            # Log progress every 5 seconds
+                            current_time = time.time()
+                            if current_time - last_log_time >= 5:
+                                logger.debug(f"Processed {total_processed[0]} lines so far")
+                                last_log_time = current_time
+                
+                except Exception as e:
+                    logger.error(f"Error processing file content: {str(e)}")
+                    data.close()
+                    raise
+                
+                finally:
+                    data.close()
                     
-                    for line in lines:
-                        line = line.strip()
-                        if ':' in line:  # Basic validation
-                            # Generate ID
-                            unique_string = line.strip()  # Just use the credential string itself
-                            cred_id = hashlib.md5(unique_string.encode()).hexdigest()
-                            
-                            # Create credential
-                            credentials.append(BreachedCredential(
-                                id=cred_id,
-                                string=line,
-                                file=scrap_file,
-                                added_at=timezone.now()
-                            ))
-                            
-                            # Prepare Elasticsearch action
-                            es_actions.append({
-                                '_index': 'breached_credentials',
-                                '_id': cred_id,
-                                '_source': {
-                                    'string': line,
-                                    'added_at': timezone.now().isoformat(),
-                                    'file_id': scrap_file.id,
-                                    'file_name': scrap_file.name,
-                                    'file_size': float(scrap_file.size),
-                                    'file_uploaded_at': scrap_file.added_at.isoformat()
-                                }
-                            })
-                            
-                            # Process chunk when we reach chunk_size
-                            if len(credentials) >= chunk_size:
-                                # Submit chunk for processing
-                                futures.append(executor.submit(
-                                    process_chunk,
-                                    credentials.copy(),
-                                    es_actions.copy(),
-                                    es_client
-                                ))
-                                
-                                # Clear current chunk
-                                credentials.clear()
-                                es_actions.clear()
-                                
-                                # Force garbage collection
-                                gc.collect()
-                                
-                                # Log progress every 5 seconds
-                                current_time = time.time()
-                                if current_time - last_log_time >= 5:
-                                    completed = sum(f.done() for f in futures)
-                                    total_processed += completed * chunk_size
-                                    logger.debug(f"Processed {total_processed} lines so far")
-                                    last_log_time = current_time
-                
-                # Process remaining credentials
-                if credentials:
-                    futures.append(executor.submit(
-                        process_chunk,
-                        credentials,
-                        es_actions,
-                        es_client
-                    ))
-                
-                # Wait for all futures to complete
-                total_processed += sum(f.result() for f in futures)
-                
-            except Exception as e:
-                logger.error(f"Error processing file content: {str(e)}")
-                data.close()
-                raise
-            
-            finally:
-                data.close()
+                    # Wait for all reader processes to complete
+                    for future in futures:
+                        future.result()
+                    
+                    # Signal writer to stop
+                    queue.put(None)
+                    
+                    # Wait for writer to complete
+                    writer_future.result()
         
         # Update scrap file count
         scrap_file.count = BreachedCredential.objects.filter(file=scrap_file).count()
         scrap_file.save()
 
+        # Verify counts
+        total_scrap_count = ScrapFile.objects.aggregate(total=models.Sum('count'))['total'] or 0
+        total_credential_count = BreachedCredential.objects.count()
+        
+        logger.debug(f"Total ScrapFile count: {total_scrap_count}")
+        logger.debug(f"Total BreachedCredential count: {total_credential_count}")
+        logger.debug(f"Count difference: {total_credential_count - total_scrap_count}")
+        
+        if total_scrap_count != total_credential_count:
+            logger.warning(f"Count mismatch! ScrapFiles: {total_scrap_count}, Credentials: {total_credential_count}")
+            print(f"[*] WARNING: Count mismatch! ScrapFiles: {total_scrap_count}, Credentials: {total_credential_count}")
+
         processing_time = time.time() - start_time
         logger.debug(f"Finished processing ScrapFile {scrap_file_id} in {processing_time:.2f}s")
-        logger.debug(f"Total processed: {total_processed} credentials")
+        logger.debug(f"Total processed: {total_processed[0]} credentials")
         
         return {
             'status': 'success',
             'scrap_file_id': scrap_file_id,
             'file_name': scrap_file.name,
-            'total_processed': total_processed,
-            'processing_time': processing_time
+            'total_processed': total_processed[0],
+            'processing_time': processing_time,
+            'total_scrap_count': total_scrap_count,
+            'total_credential_count': total_credential_count,
+            'count_mismatch': total_scrap_count != total_credential_count
         }
         
     except Exception as e:
         logger.error(f"Error processing ScrapFile {scrap_file_id}: {str(e)}", exc_info=True)
+        if "deadlock" in str(e).lower():
+            raise self.retry(exc=e, countdown=5)
         return {
             'status': 'error',
             'message': str(e),

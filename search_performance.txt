@@ -1,0 +1,23 @@
+# Elasticsearch Search Performance Benchmark (Updated: May 11, 2025)
+
+## Test Configuration
+- Elasticsearch version: 8.7.1
+- Dataset: ~120 million breached credentials
+- Search term: "frost"
+- Test environment: Docker container
+
+## Performance Results
+
+| Query Type | Pattern | Results | Time (s) | Hits/sec | 
+|------------|---------|---------|----------|----------|
+| Term | `frost` (exact match) | 360 | 0.234 | 1,539.3 |
+| Regexp | `.*[fF][rR][oO][sS][tT].*` | 25,148 | 4.807 | 5,232.1 |
+| Wildcard | `*frost*` | 25,148 | 5.220 | 4,818.1 |
+| Match | `frost` | 360 | 0.014 | 25,749.0 |
+| Case-insensitive | Combined wildcards | 25,148 | 10.024 | 2,508.9 |
+
+## Previous Benchmark (Reference)
+1. Simple prefix search ('668'): 3.737s
+2. Wildcard search ('*hotmail*'): 8.227s
+3. Term search ('gmail'): 0.093s
+4. Complex query_string search: 0.667s

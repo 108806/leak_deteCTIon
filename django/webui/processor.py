@@ -18,9 +18,10 @@ from django_q.tasks import async_task
 
 logger = logging.getLogger(__name__)
 
-def calculate_file_size(obj: Object) -> str:
+def calculate_file_size(obj: Object) -> float:
+    """Convert file size from bytes to MB and return as float value."""
     size_bytes = obj.size
-    return f"{size_bytes / (1024 ** 2):.2f}"
+    return size_bytes / (1024 ** 2)
 
 def line_splitter(line: str, max_length: int = 1024) -> list[str]:
     """Split a line into multiple strings if longer than max_length, based on the most frequent separator."""
