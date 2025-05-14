@@ -1,0 +1,307 @@
+{% extends "webui/base.html" %}
+{% load humanize %}
+
+{% block title %}Dashboard - Credential Search Tool{% endblock %}
+
+{% block extra_css %}
+<style>
+    .metrics-card {
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        transition: transform 0.3s;
+        margin-bottom: 20px;
+    }
+    .metrics-card:hover {
+        transform: translateY(-5px);
+    }
+    .es-status-connected {
+        color: #28a745;
+    }
+    .es-status-warning {
+        color: #ffc107;
+    }
+    .es-status-error {
+        color: #dc3545;
+    }
+    .metric-number {
+        font-size: 2rem;
+        font-weight: bold;
+    }
+    .metric-label {
+        font-size: 0.9rem;
+        color: #6c757d;
+    }
+    .elasticsearch-metrics {
+        margin-top: 2rem;
+    }
+    .status-badge {
+        font-size: 0.8rem;
+        padding: 0.3rem 0.6rem;
+        border-radius: 50px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <h2>System Dashboard</h2>
+                <span>{{ now|date:"F j, Y, H:i" }}</span>
+            </div>
+            <p class="text-muted">Monitor system performance and status</p>
+        </div>
+    </div>
+
+    <!-- Key Metrics -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="card metrics-card h-100">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Total Credentials</h5>
+                    <div class="metric-number">{{ total_credentials|default:"0"|intcomma }}</div>
+                    <div class="metric-label">stored in database</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card metrics-card h-100">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Source Files</h5>
+                    <div class="metric-number">{{ total_files|default:"0"|intcomma }}</div>
+                    <div class="metric-label">breach data files</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card metrics-card h-100">
+                <div class="card-body text-center">
+                    <h5 class="card-title">Elasticsearch Status</h5>
+                    {% if es_status == "connected" %}
+                        <div class="metric-number es-status-connected">
+                            <i class="fas fa-check-circle"></i> 
+                            {{ es_health.status|default:"Unknown"|title }}
+                        </div>
+                        <div class="metric-label">Cluster health</div>
+                    {% else %}
+                        <div class="metric-number es-status-error">
+                            <i class="fas fa-exclamation-circle"></i> 
+                            Error
+                        </div>
+                        <div class="metric-label">{{ es_error|default:"Connection failed" }}</div>
+                        <small class="text-muted mt-2">Dashboard functionality is limited while Elasticsearch is unavailable</small>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Elasticsearch Details -->
+    {% if es_status == "connected" %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Elasticsearch Cluster Details</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <table class="table table-sm">
+                                <tbody>
+                                    <tr>
+                                        <th>Cluster Name</th>
+                                        <td>{{ es_health.cluster_name }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Status</th>
+                                        <td>
+                                            {% if es_health.status == 'green' %}
+                                            <span class="badge bg-success status-badge">Green</span>
+                                            {% elif es_health.status == 'yellow' %}
+                                            <span class="badge bg-warning text-dark status-badge">Yellow</span>
+                                            {% else %}
+                                            <span class="badge bg-danger status-badge">Red</span>
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    <tr>
+                                        <th>Nodes</th>
+                                        <td>{{ es_health.number_of_nodes }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Shards</th>
+                                        <td>{{ es_health.active_shards }} active / {{ es_health.initializing_shards }} initializing / {{ es_health.unassigned_shards }} unassigned</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="col-md-6">
+                            <table class="table table-sm">
+                                <tbody>
+                                    <tr>
+                                        <th>Documents</th>
+                                        <td>{{ doc_count|intcomma }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Storage Size</th>
+                                        <td>{{ store_size|filesizeformat }}</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Queries</th>
+                                        <td>{{ query_total|intcomma }} ({{ query_time|intcomma }}ms)</td>
+                                    </tr>
+                                    <tr>
+                                        <th>Fetches</th>
+                                        <td>{{ fetch_total|intcomma }} ({{ fetch_time|intcomma }}ms)</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Indices -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Elasticsearch Indices</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Index</th>
+                                    <th>Status</th>
+                                    <th>Docs</th>
+                                    <th>Size</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for index in es_indices %}
+                                <tr>
+                                    <td>{{ index.index }}</td>
+                                    <td>
+                                        {% if index.health == 'green' %}
+                                        <span class="badge bg-success status-badge">Green</span>
+                                        {% elif index.health == 'yellow' %}
+                                        <span class="badge bg-warning text-dark status-badge">Yellow</span>
+                                        {% else %}
+                                        <span class="badge bg-danger status-badge">Red</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ index.docs|default:"0"|intcomma }}</td>
+                                    <td>{{ index.store|default:"0" }}</td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="4" class="text-center">No indices found</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Recent Files -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Recent Files</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Added</th>
+                                    <th>Size</th>
+                                    <th>Credentials</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for file in recent_files %}
+                                <tr>
+                                    <td>{{ file.name }}</td>
+                                    <td>{{ file.added_at|date:"Y-m-d H:i" }}</td>
+                                    <td>{{ file.size|floatformat:2 }} MB</td>
+                                    <td>{{ file.count|intcomma }}</td>
+                                </tr>
+                                {% empty %}
+                                <tr>
+                                    <td colspan="4" class="text-center">No files found</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Daily Credentials Chart -->
+    {% if credential_dates %}
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Credentials Added (Last 7 Days)</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="credentialsChart" width="400" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% if credential_dates %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const ctx = document.getElementById('credentialsChart').getContext('2d');
+        const dates = {{ credential_dates|safe }};
+        const counts = {{ credential_counts|safe }};
+        
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: dates,
+                datasets: [{
+                    label: 'Credentials Added',
+                    data: counts,
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    borderWidth: 2,
+                    tension: 0.1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    });
+</script>
+{% endif %}
+{% endblock %}

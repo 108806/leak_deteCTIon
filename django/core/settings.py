@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "django.contrib.humanize",  # Added for intcomma and other formatting filters
 ]
 
 MIDDLEWARE = [
@@ -118,7 +119,10 @@ DATABASES = {
 
 ELASTICSEARCH_DSL = {
     "default": {
-        "hosts": "http://elastic:9200"
+        "hosts": "http://elastic:9200",
+        "timeout": 60,  # 60 second timeout
+        "retry_on_timeout": True,
+        "max_retries": 2
     },
     "analysis": {
         "analyzer": {
@@ -136,6 +140,12 @@ ELASTICSEARCH_DSL = {
             }
         }
     }
+}
+
+# Default parameters to use when performing Elasticsearch searches
+ELASTICSEARCH_SEARCH_PARAMS = {
+    "timeout": "60s",
+    "preference": "_local"  # Prefer local shards to reduce network latency
 }
 
 
