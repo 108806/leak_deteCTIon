@@ -92,9 +92,12 @@ def collect_and_upload_files(
                     logger.info(f"Processing file: {file}")
                     if any(file.endswith(x) for x in ACCEPTED_FILETYPES):
                         file_path = os.path.join(root, file)
+                        # Handle file paths with spaces for MinIO upload
                         object_name = os.path.relpath(file_path, source_path).replace(
                             os.sep, "/"
                         )
+                        # Replace spaces with underscores in the object name for MinIO compatibility
+                        object_name = object_name.replace(" ", "_")
 
                         # Check if the file path is already in the cache
                         if file_path in uploaded_files:

@@ -97,3 +97,22 @@ docker exec -it django python manage.py shell -c "from webui.models import Scrap
 docker exec -it django python manage.py search_credentials [SEARCH_TERM] --all
 # For more options, see django/webui/management/commands/SEARCH_GUIDE.md
 
+
+#FINDING MOST RECENT FILES IN TG DOWNLOADER
+find /mnt/encrypted/leak_deteCTIon/telegram_downloader/app/channels -type f -mtime -30 | head -10
+
+#CHECK LAST MIDIFICATION TIME IN MINIO
+cd /mnt/encrypted/leak_deteCTIon && sudo ls -la data/minio_data/breached-credentials/ | head -5
+#OR
+cd /mnt/encrypted/leak_deteCTIon && sudo docker exec -it minio find /data/breached-credentials -type f -exec stat --format="%y %n" {} \; | sort -r | head -5
+
+
+
+#CHECK THE MINIO COLLECTOR STATUS
+cd /mnt/encrypted/leak_deteCTIon/django && python manage.py shell -c "from django_q.models import Task; print(Task.objects.filter(func__contains='collector').count())"
+
+#MANUALLY SYNC TELEGRAM FILES TO MINIO
+./sync_telegram_files.sh
+# Or force re-upload of all files:
+docker exec django python manage.py sync_telegram_files --force
+
